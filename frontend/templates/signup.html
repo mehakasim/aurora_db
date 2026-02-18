@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+{% block title %}Sign Up - AuroraDB{% endblock %}
+
+{% block extra_head %}
+<script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                colors: { "primary": "#0D9488" },
+            },
+        },
+    }
+</script>
+<style>
+    .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="bg-white min-h-screen flex items-center justify-center p-6">
+    <div class="w-full max-w-[500px]">
+        <div class="flex items-center justify-center gap-2 mb-8">
+            <span class="material-symbols-outlined text-4xl text-[#0D9488]">database</span>
+            <h2 class="text-2xl font-bold">AuroraDB</h2>
+        </div>
+        
+        <div class="bg-white shadow-2xl rounded-xl p-8 border border-gray-100">
+            <div class="text-center mb-8">
+                <h1 class="text-3xl font-bold mb-2">Create your account</h1>
+                <p class="text-gray-600">Start building visual insights in minutes</p>
+            </div>
+            
+            <!-- AUTOCOMPLETE DISABLED ON FORM -->
+            <form method="POST" action="{{ url_for('auth.signup') }}" class="space-y-5" id="signupForm" autocomplete="off">
+                <!-- Name -->
+                <div>
+                    <label class="text-sm font-semibold">Full Name</label>
+                    <div class="relative mt-2">
+                        <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">person</span>
+                        <input name="name" type="text" required 
+                               autocomplete="off"
+                               class="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-primary outline-none" 
+                               placeholder="Jane Doe"/>
+                    </div>
+                </div>
+
+                <!-- Email - NEW AUTOCOMPLETE ATTRIBUTE -->
+                <div>
+                    <label class="text-sm font-semibold">Email Address</label>
+                    <div class="relative mt-2">
+                        <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">mail</span>
+                        <input name="email" type="email" required 
+                               autocomplete="new-email"
+                               class="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-primary outline-none" 
+                               placeholder="jane@company.com"/>
+                    </div>
+                </div>
+
+                <!-- Password - NEW AUTOCOMPLETE ATTRIBUTE -->
+                <div>
+                    <label class="text-sm font-semibold">Password</label>
+                    <div class="relative mt-2">
+                        <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">lock</span>
+                        <input name="password" id="password" type="password" required minlength="6"
+                               autocomplete="new-password"
+                               class="w-full pl-10 pr-12 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-primary outline-none" 
+                               placeholder="••••••••"/>
+                        <button type="button" onclick="togglePassword('password', 'passwordToggle')" 
+                                class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                            <span class="material-symbols-outlined" id="passwordToggle">visibility</span>
+                        </button>
+                    </div>
+                    
+                    <!-- Password Strength Indicator -->
+                    <div class="mt-2">
+                        <div class="flex gap-1.5 h-1.5 w-full">
+                            <div id="strength1" class="flex-1 bg-gray-200 rounded-full transition-all"></div>
+                            <div id="strength2" class="flex-1 bg-gray-200 rounded-full transition-all"></div>
+                            <div id="strength3" class="flex-1 bg-gray-200 rounded-full transition-all"></div>
+                            <div id="strength4" class="flex-1 bg-gray-200 rounded-full transition-all"></div>
+                        </div>
+                        <p id="strengthText" class="text-xs mt-1.5 text-gray-500">Strength: Enter password</p>
+                    </div>
+                    
+                    <!-- Password Requirements -->
+                    <div class="mt-3 space-y-1 text-xs">
+                        <div id="req-length" class="flex items-center gap-2 text-gray-500">
+                            <span class="material-symbols-outlined text-sm">radio_button_unchecked</span>
+                            <span>At least 6 characters</span>
+                        </div>
+                        <div id="req-letter" class="flex items-center gap-2 text-gray-500">
+                            <span class="material-symbols-outlined text-sm">radio_button_unchecked</span>
+                            <span>Contains letters</span>
+                        </div>
+                        <div id="req-number" class="flex items-center gap-2 text-gray-500">
+                            <span class="material-symbols-outlined text-sm">radio_button_unchecked</span>
+                            <span>Contains numbers</span>
+                        </div>
+                        <div id="req-special" class="flex items-center gap-2 text-gray-500">
+                            <span class="material-symbols-outlined text-sm">radio_button_unchecked</span>
+                            <span>Contains special character (!@#$%^&*)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Confirm Password - NEW AUTOCOMPLETE ATTRIBUTE -->
+                <div>
+                    <label class="text-sm font-semibold">Confirm Password</label>
+                    <div class="relative mt-2">
+                        <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">lock_reset</span>
+                        <input name="confirm_password" id="confirm_password" type="password" required minlength="6"
+                               autocomplete="new-password"
+                               class="w-full pl-10 pr-12 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-primary outline-none" 
+                               placeholder="••••••••"/>
+                        <button type="button" onclick="togglePassword('confirm_password', 'confirmToggle')" 
+                                class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                            <span class="material-symbols-outlined" id="confirmToggle">visibility</span>
+                        </button>
+                    </div>
+                    <p id="matchText" class="text-xs mt-1 text-gray-500"></p>
+                </div>
+
+                <!-- Submit -->
+                <button type="submit" class="w-full py-3 bg-primary hover:bg-[#0F766E] text-white font-bold rounded-lg transition-all">
+                    Create Account
+                </button>
+            </form>
+
+            <p class="mt-6 text-center text-sm text-gray-600">
+                Already have an account? 
+                <a href="{{ url_for('auth.login') }}" class="text-primary font-bold hover:underline">Log in</a>
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Prevent browser autofill from interfering with password strength checker
+window.addEventListener('load', function() {
+    // Clear any autofilled values on page load
+    const password = document.getElementById('password');
+    const confirmPassword = document.getElementById('confirm_password');
+    const email = document.querySelector('input[name="email"]');
+    
+    // Small delay to ensure browser autofill has attempted
+    setTimeout(function() {
+        // If fields were autofilled, clear them
+        if (password.value || confirmPassword.value) {
+            password.value = '';
+            confirmPassword.value = '';
+            email.value = '';
+            
+            // Reset strength indicator
+            const strengthText = document.getElementById('strengthText');
+            strengthText.textContent = 'Strength: Enter password';
+            strengthText.className = 'text-xs mt-1.5 text-gray-500';
+            
+            // Reset strength bars
+            ['strength1', 'strength2', 'strength3', 'strength4'].forEach(id => {
+                document.getElementById(id).className = 'flex-1 bg-gray-200 rounded-full transition-all';
+            });
+        }
+    }, 100);
+});
+
+// Toggle password visibility
+function togglePassword(inputId, iconId) {
+    const input = document.getElementById(inputId);
+    const icon = document.getElementById(iconId);
+    
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.textContent = 'visibility_off';
+    } else {
+        input.type = 'password';
+        icon.textContent = 'visibility';
+    }
+}
+
+// Password strength checker
+const password = document.getElementById('password');
+const confirmPassword = document.getElementById('confirm_password');
+
+password.addEventListener('input', function() {
+    const value = this.value;
+    let strength = 0;
+    
+    // Check requirements
+    const hasLength = value.length >= 6;
+    const hasLetter = /[a-zA-Z]/.test(value);
+    const hasNumber = /[0-9]/.test(value);
+    const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(value);
+    
+    // Update requirement indicators
+    updateRequirement('req-length', hasLength);
+    updateRequirement('req-letter', hasLetter);
+    updateRequirement('req-number', hasNumber);
+    updateRequirement('req-special', hasSpecial);
+    
+    // Calculate strength
+    if (hasLength) strength++;
+    if (hasLetter) strength++;
+    if (hasNumber) strength++;
+    if (hasSpecial) strength++;
+    
+    // Update strength bars
+    const bars = ['strength1', 'strength2', 'strength3', 'strength4'];
+    const colors = ['bg-red-500', 'bg-orange-500', 'bg-yellow-500', 'bg-green-500'];
+    const labels = ['Weak', 'Fair', 'Good', 'Strong'];
+    const textColors = ['text-red-500', 'text-orange-500', 'text-yellow-500', 'text-green-500'];
+    
+    bars.forEach((bar, index) => {
+        const element = document.getElementById(bar);
+        // Remove all color classes
+        colors.forEach(color => element.classList.remove(color));
+        
+        if (index < strength) {
+            element.classList.add(colors[strength - 1]);
+        } else {
+            element.classList.remove(...colors);
+            element.classList.add('bg-gray-200');
+        }
+    });
+    
+    // Update strength text
+    const strengthText = document.getElementById('strengthText');
+    if (value.length === 0) {
+        strengthText.textContent = 'Strength: Enter password';
+        strengthText.className = 'text-xs mt-1.5 text-gray-500';
+    } else {
+        strengthText.textContent = `Strength: ${labels[strength - 1] || 'Too Weak'}`;
+        strengthText.className = `text-xs mt-1.5 font-semibold ${textColors[strength - 1] || 'text-red-500'}`;
+    }
+    
+    // Check password match
+    checkPasswordMatch();
+});
+
+confirmPassword.addEventListener('input', checkPasswordMatch);
+
+function updateRequirement(id, met) {
+    const element = document.getElementById(id);
+    const icon = element.querySelector('.material-symbols-outlined');
+    
+    if (met) {
+        element.classList.remove('text-gray-500');
+        element.classList.add('text-green-500');
+        icon.textContent = 'check_circle';
+        icon.style.fontVariationSettings = "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24";
+    } else {
+        element.classList.remove('text-green-500');
+        element.classList.add('text-gray-500');
+        icon.textContent = 'radio_button_unchecked';
+        icon.style.fontVariationSettings = "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24";
+    }
+}
+
+function checkPasswordMatch() {
+    const pass = password.value;
+    const confirm = confirmPassword.value;
+    const matchText = document.getElementById('matchText');
+    
+    if (confirm.length === 0) {
+        matchText.textContent = '';
+        confirmPassword.classList.remove('border-green-500', 'border-red-500');
+        return;
+    }
+    
+    if (pass === confirm) {
+        matchText.textContent = '✓ Passwords match';
+        matchText.className = 'text-xs mt-1 text-green-500 font-semibold';
+        confirmPassword.classList.remove('border-red-500');
+        confirmPassword.classList.add('border-green-500');
+    } else {
+        matchText.textContent = '✗ Passwords do not match';
+        matchText.className = 'text-xs mt-1 text-red-500 font-semibold';
+        confirmPassword.classList.remove('border-green-500');
+        confirmPassword.classList.add('border-red-500');
+    }
+}
+</script>
+{% endblock %}

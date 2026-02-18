@@ -1,0 +1,343 @@
+{% extends "base.html" %} {% block title %}{{ file.original_filename }} -
+AuroraDB{% endblock %} {% block extra_head %}
+<link
+  href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+  rel="stylesheet"
+/>
+<link
+  href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined"
+  rel="stylesheet"
+/>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: { primary: "#12a594" },
+        fontFamily: { display: ["Inter", "sans-serif"] },
+      },
+    },
+  };
+</script>
+<style>
+  body {
+    font-family: "Inter", sans-serif;
+  }
+
+  /* Simple table styling - NO GRID */
+  .table-container {
+    overflow: auto;
+    max-height: calc(100vh - 180px);
+    background: white;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: max-content;
+    min-width: 100%;
+    font-size: 13px;
+  }
+
+  th,
+  td {
+    border: 1px solid #e5e7eb;
+    padding: 6px 12px;
+    white-space: nowrap;
+    text-align: left;
+  }
+
+  th {
+    background-color: #f3f4f6;
+    color: #4b5563;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+  }
+
+  .row-num {
+    background-color: #f9fafb;
+    color: #6b7280;
+    font-weight: 500;
+    text-align: center;
+    position: sticky;
+    left: 0;
+    z-index: 10;
+  }
+
+  td {
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+</style>
+{% endblock %} {% block content %}
+<div class="bg-gray-50 h-screen flex flex-col overflow-hidden">
+  <!-- Header -->
+  <header
+    class="h-12 border-b border-gray-200 flex items-center justify-between px-4 bg-white"
+  >
+    <div class="flex items-center gap-2">
+      <a
+        href="{{ url_for('main.dashboard') }}"
+        class="w-8 h-8 bg-primary rounded flex items-center justify-center text-white hover:opacity-90"
+      >
+        <span class="material-icons-outlined text-xl">arrow_back</span>
+      </a>
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-medium text-gray-500"
+            >{{ current_user.name }} /</span
+          >
+          <span class="text-sm font-semibold"
+            >{{ file.original_filename }}</span
+          >
+        </div>
+        <div class="text-xs text-gray-500">
+          {{ file.row_count }} rows × {{ preview_data.columns|length }} columns
+        </div>
+      </div>
+    </div>
+    <div class="flex gap-2">
+      <a
+        href="{{ url_for('main.download_file', file_id=file.id) }}"
+        class="bg-primary text-white px-4 py-1.5 rounded text-sm font-semibold hover:opacity-90"
+      >
+        <span class="material-icons-outlined text-sm">download</span>
+        Download
+      </a>
+      <a
+        href="{{ url_for('main.dashboard') }}"
+        class="bg-gray-200 text-gray-700 px-4 py-1.5 rounded text-sm font-semibold hover:bg-gray-300"
+      >
+        Close
+      </a>
+    </div>
+  </header>
+
+  <!-- Toolbar -->
+  <div
+    class="h-10 border-b border-gray-200 bg-white flex items-center px-4 gap-2 text-xs text-gray-600"
+  >
+    <button
+      onclick="window.location.reload()"
+      class="p-1 hover:bg-gray-100 rounded"
+    >
+      <span class="material-icons-outlined text-lg">refresh</span>
+    </button>
+    <span class="border-l pl-2">
+      Showing {{ [preview_data.displayed_rows, 100]|min }} of {{
+      preview_data.total_rows }} rows
+    </span>
+  </div>
+
+  <!-- Main: Chat Left + Table Right -->
+  <main class="flex flex-1 overflow-hidden">
+    <!-- Chat Sidebar (400px) -->
+    <aside class="w-[400px] flex flex-col border-r border-gray-200 bg-white">
+      <div class="p-4 border-b flex justify-between items-center">
+        <h2 class="text-lg font-bold">Sheet chat</h2>
+        <button
+          onclick="toggleChat()"
+          class="p-1.5 hover:bg-gray-100 rounded-full"
+        >
+          <span class="material-icons-outlined">close</span>
+        </button>
+      </div>
+
+      <div id="chatMessages" class="flex-1 overflow-y-auto p-6 flex flex-col">
+        <div class="text-center mb-6">
+          <div class="mb-4 mt-3 text-2xl font-bold text-gray-900">
+            What would you like to do?
+          </div>
+          <p class="text-sm text-gray-500 mb-4">
+            Ask questions about your data in natural language
+          </p>
+
+          <!-- Sample Questions -->
+          <div class="space-y-2">
+            <button
+              onclick="setQuestion('Show me the first 10 rows')"
+              class="w-full text-left px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg text-sm text-gray-700 transition-colors"
+            >
+              Show me the first 10 rows
+            </button>
+            <button
+              onclick="setQuestion('What are the column names?')"
+              class="w-full text-left px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg text-sm text-gray-700 transition-colors"
+            >
+              What are the column names?
+            </button>
+            <button
+              onclick="setQuestion('How many rows are in this dataset?')"
+              class="w-full text-left px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg text-sm text-gray-700 transition-colors"
+            >
+              How many rows are in this dataset?
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-4 space-y-3">
+        <div class="relative">
+          <div
+            class="bg-gray-50 rounded-xl p-3 border border-gray-200 focus-within:border-primary transition-colors"
+          >
+            <input
+              type="text"
+              id="queryInput"
+              placeholder="Ask a question..."
+              class="w-full bg-transparent outline-none text-sm placeholder-gray-500"
+              onkeypress="if (event.key === 'Enter') askQuestion();"
+            />
+            <div class="flex items-center justify-between mt-2">
+              <div class="flex items-center gap-1">
+                <button
+                  class="p-1.5 text-gray-500 hover:text-primary rounded-md"
+                >
+                  <span class="material-icons-outlined text-xl text-gray-400"
+                    >attach_file</span
+                  >
+                </button>
+                <button
+                  class="p-1.5 text-gray-500 hover:text-primary rounded-md"
+                >
+                  <span class="material-icons-outlined text-xl text-gray-400"
+                    >mic</span
+                  >
+                </button>
+              </div>
+              <button
+                onclick="askQuestion()"
+                class="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white shadow-sm hover:opacity-90"
+              >
+                <span class="material-icons-outlined text-lg"
+                  >arrow_upward</span
+                >
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Spreadsheet Table (Flex 1) -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+      <div class="table-container flex-1">
+        <table>
+          <thead>
+            <tr>
+              <th class="row-num">#</th>
+              {% for column in preview_data.columns %}
+              <th>{{ column }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in preview_data.rows[:100] %}
+            <tr>
+              <td class="row-num">{{ loop.index }}</td>
+              {% for cell in row %}
+              <td>{{ cell if cell is not none else '' }}</td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if preview_data.total_rows > 100 %}
+      <div class="border-t p-3 bg-gray-50 text-center">
+        <p class="text-sm text-gray-600 mb-2">
+          Showing first 100 rows of {{ preview_data.total_rows }}
+        </p>
+        <button
+          onclick="
+            alert('Pagination coming soon! Use Download to get all data.')
+          "
+          class="px-4 py-2 bg-primary text-white rounded text-sm hover:opacity-90"
+        >
+          Load Next 100 Rows
+        </button>
+      </div>
+      {% endif %}
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer
+    class="h-8 border-t bg-gray-50 flex items-center px-4 justify-between text-xs"
+  >
+    <span class="text-primary font-medium">{{ file.table_name }}</span>
+    <div class="flex items-center gap-2">
+      <span class="w-2 h-2 rounded-full bg-green-500"></span>
+      <span class="text-gray-500"
+        >{{ [preview_data.displayed_rows, 100]|min }} rows loaded</span
+      >
+    </div>
+  </footer>
+</div>
+
+<div
+  id="loadingOverlay"
+  class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+>
+  <div class="bg-white rounded-xl p-8">
+    <div
+      class="animate-spin rounded-full h-12 w-12 border-b-4 border-primary mx-auto mb-4"
+    ></div>
+    <p class="text-sm">Processing...</p>
+  </div>
+</div>
+{% endblock %} {% block scripts %}
+<script>
+  const fileId = {{ file.id }};
+
+  function setQuestion(q) {
+      document.getElementById('queryInput').value = q;
+  }
+
+  function askQuestion() {
+      const question = document.getElementById('queryInput').value.trim();
+      if (!question) return;
+
+      const chatMessages = document.getElementById('chatMessages');
+
+      // User message
+      const userMsg = document.createElement('div');
+      userMsg.className = 'mb-3 p-3 bg-blue-50 rounded-lg';
+      userMsg.innerHTML = `<p class="text-xs font-medium text-blue-900">You</p><p class="text-sm text-blue-800">${question}</p>`;
+      chatMessages.appendChild(userMsg);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+
+      document.getElementById('loadingOverlay').classList.remove('hidden');
+
+      fetch('/api/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_id: fileId, question: question })
+      })
+      .then(r => r.json())
+      .then(data => {
+          document.getElementById('loadingOverlay').classList.add('hidden');
+          const aiMsg = document.createElement('div');
+          aiMsg.className = 'mb-3 p-3 bg-green-50 rounded-lg';
+          aiMsg.innerHTML = `<p class="text-xs font-medium text-green-900">AI</p><p class="text-sm text-green-800">${data.answer || 'Feature coming soon!'}</p>`;
+          chatMessages.appendChild(aiMsg);
+          document.getElementById('queryInput').value = '';
+          chatMessages.scrollTop = chatMessages.scrollHeight;
+      })
+      .catch(() => {
+          document.getElementById('loadingOverlay').classList.add('hidden');
+          const errorMsg = document.createElement('div');
+          errorMsg.className = 'mb-3 p-3 bg-yellow-50 rounded-lg';
+          errorMsg.innerHTML = '<p class="text-sm text-yellow-800">AI coming soon! Your data is displayed below.</p>';
+          chatMessages.appendChild(errorMsg);
+          chatMessages.scrollTop = chatMessages.scrollHeight;
+      });
+  }
+
+  function toggleChat() {
+      document.querySelector('aside').classList.toggle('hidden');
+  }
+</script>
+{% endblock %}
