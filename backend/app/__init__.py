@@ -52,11 +52,12 @@ def create_app():
         print("✅ Database tables created!")
     
     # Register blueprints (routes)
-    from .routes import auth, main, query
+    from .routes import auth, main, query, visualizations
     
     app.register_blueprint(auth.bp)
     app.register_blueprint(main.bp)
     app.register_blueprint(query.bp)
+    app.register_blueprint(visualizations.bp)
     
     # Root redirect
     @app.route('/')

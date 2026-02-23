@@ -2,7 +2,7 @@
 {% block title %}{{ file.original_filename }} - AuroraDB{% endblock %}
 
 {% block extra_head %}
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet"/>
 <script>
     tailwind.config = {
@@ -83,8 +83,16 @@
             <button onclick="resetView()" class="bg-gray-200 text-gray-700 px-4 py-1.5 rounded text-sm font-semibold hover:bg-gray-300">
                 Reset View
             </button>
+            
+            <!-- CHARTS BUTTON - Opens visualizations for this file -->
+            <a href="{{ url_for('visualizations.view_file_charts', file_id=file.id) }}" 
+               class="bg-purple-500 text-white px-4 py-1.5 rounded text-sm font-semibold hover:bg-purple-600 flex items-center gap-2 transition-all">
+                <span class="material-icons-outlined text-sm">bar_chart</span>
+                Charts
+            </a>
+            
             <a href="{{ url_for('main.download_file', file_id=file.id) }}" 
-               class="bg-primary text-white px-4 py-1.5 rounded text-sm font-semibold hover:opacity-90">
+               class="bg-primary text-white px-4 py-1.5 rounded text-sm font-semibold hover:opacity-90 flex items-center gap-1">
                 <span class="material-icons-outlined text-sm">download</span>
                 Download
             </a>
@@ -121,26 +129,25 @@
             
             <div id="chatMessages" class="flex-1 overflow-y-auto p-6">
                 <div class="text-center mb-6" id="welcomeMessage">
-                    <h3 class="text-xl font-bold mb-2">Ask questions about your data</h3>
-                    <p class="text-sm text-gray-500 mb-4">I'll help you analyze and filter your data</p>
-                    
-                    <div class="text-left space-y-2">
-                        <p class="text-xs font-semibold text-gray-500 uppercase mb-2">Try asking:</p>
-                        <button onclick="setQuestion('Show me all rows where Column_3 is greater than 100')" 
+                    <h3 class="text-xl font-bold mb-2">Ask about your data</h3>
+                    <p class="text-sm text-gray-500 mb-4">Natural language queries</p>
+                    <div class="space-y-2">
+                        <button onclick="setQuestion('Show first 10 rows')" 
                                 class="w-full text-left px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded text-sm transition-colors">
-                            Filter rows with specific criteria
+                            Show first 10 rows
                         </button>
-                        <button onclick="setQuestion('Count the number of rows')" 
+                        <button onclick="setQuestion('What columns exist?')" 
                                 class="w-full text-left px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded text-sm transition-colors">
-                            Count records
+                            What are the columns?
                         </button>
-                        <button onclick="setQuestion('Show me the first 10 rows')" 
-                                class="w-full text-left px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded text-sm transition-colors">
-                            Show first N rows
-                        </button>
-                        <button onclick="setQuestion('What is the average of Column_5?')" 
-                                class="w-full text-left px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded text-sm transition-colors">
-                            Calculate averages
+                        
+                        <!-- CHARTS SUGGESTION -->
+                        <button onclick="window.location.href='{{ url_for('visualizations.view_file_charts', file_id=file.id) }}'" 
+                                class="w-full text-left px-3 py-2 bg-purple-50 hover:bg-purple-100 rounded text-sm transition-colors border border-purple-200">
+                            <div class="flex items-center gap-2">
+                                <span class="material-icons-outlined text-purple-600 text-lg">bar_chart</span>
+                                <span class="font-medium text-purple-700">View Charts & Insights</span>
+                            </div>
                         </button>
                     </div>
                 </div>
@@ -272,17 +279,14 @@ function askQuestion() {
         
         // Handle result based on type
         if (data.result_type === 'table') {
-            // Update spreadsheet with query results
             updateSpreadsheet(data.data.columns, data.data.rows);
             document.getElementById('queryIndicator').classList.remove('hidden');
             document.getElementById('dataInfo').textContent = `${data.data.row_count} results × ${data.data.columns.length} columns`;
             isQueryResult = true;
         } else {
-            // Single value result - already shown in chat
             document.getElementById('queryIndicator').classList.add('hidden');
         }
         
-        // Clear input
         document.getElementById('queryInput').value = '';
         chatMessages.scrollTop = chatMessages.scrollHeight;
     })
@@ -302,14 +306,12 @@ function updateSpreadsheet(columns, rows) {
     const tableBody = document.getElementById('tableBody');
     const table = document.getElementById('dataTable');
     
-    // Update headers
     const thead = table.querySelector('thead tr');
     thead.innerHTML = '<th class="row-num">#</th>';
     columns.forEach(col => {
         thead.innerHTML += `<th>${escapeHtml(col)}</th>`;
     });
     
-    // Update rows
     tableBody.innerHTML = '';
     rows.forEach((row, idx) => {
         const tr = document.createElement('tr');
@@ -321,23 +323,19 @@ function updateSpreadsheet(columns, rows) {
         tableBody.appendChild(tr);
     });
     
-    // Update pagination
     document.getElementById('paginationText').textContent = `Showing ${rows.length} query results`;
     document.getElementById('rowCount').textContent = `Query results: ${rows.length} rows`;
 }
 
 function resetView() {
-    // Reset to original data
     const table = document.getElementById('dataTable');
     const thead = table.querySelector('thead tr');
     
-    // Reset headers
     thead.innerHTML = '<th class="row-num">#</th>';
     originalColumns.forEach(col => {
         thead.innerHTML += `<th>${escapeHtml(col)}</th>`;
     });
     
-    // Reset rows
     const tableBody = document.getElementById('tableBody');
     tableBody.innerHTML = '';
     originalRows.forEach((row, idx) => {
@@ -349,7 +347,6 @@ function resetView() {
         tableBody.appendChild(tr);
     });
     
-    // Reset UI
     document.getElementById('queryIndicator').classList.add('hidden');
     document.getElementById('dataInfo').textContent = `{{ file.row_count }} rows × {{ preview_data.columns|length }} columns`;
     document.getElementById('paginationText').textContent = 'Showing first 100 of {{ preview_data.total_rows }} rows';

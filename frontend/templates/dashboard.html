@@ -1,305 +1,382 @@
-{% extends "base.html" %}
-{% block title %}Dashboard - AuroraDB{% endblock %}
-
-{% block extra_head %}
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+{% extends "base.html" %} {% block title %}Dashboard - AuroraDB{% endblock %} {%
+block extra_head %}
+<link
+  href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+  rel="stylesheet"
+/>
+<link
+  href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+  rel="stylesheet"
+/>
 <script>
-    tailwind.config = {
-        theme: {
-            extend: {
-                colors: {
-                    primary: "#0D9488",
-                },
-                fontFamily: {
-                    sans: ["Plus Jakarta Sans", "sans-serif"],
-                },
-            },
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          primary: "#0D9488",
         },
-    };
+        fontFamily: {
+          sans: ["Plus Jakarta Sans", "sans-serif"],
+        },
+      },
+    },
+  };
 </script>
 <style>
-    .material-symbols-outlined {
-        font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
-    }
+  .material-symbols-outlined {
+    font-variation-settings:
+      "FILL" 0,
+      "wght" 400,
+      "GRAD" 0,
+      "opsz" 24;
+  }
 </style>
-{% endblock %}
-
-{% block content %}
+{% endblock %} {% block content %}
 <div class="min-h-screen bg-gray-50">
-    <!-- Header -->
-    <div class="bg-white border-b sticky top-0 z-40">
-        <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-            <div class="flex items-center gap-2">
-                <span class="material-symbols-outlined text-2xl text-primary">database</span>
-                <h1 class="text-xl font-bold">AuroraDB</h1>
-            </div>
+  <!-- Header -->
+  <div class="bg-white border-b sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+      <!-- Left: Logo + Navigation -->
+      <div class="flex items-center gap-6">
+        <div class="flex items-center gap-2">
+          <span class="material-symbols-outlined text-2xl text-primary"
+            >database</span
+          >
+          <h1 class="text-xl font-bold">AuroraDB</h1>
+        </div>
+
+        <!-- Navigation Links -->
+        <nav class="flex items-center gap-6 text-sm font-medium">
+          <a
+            href="{{ url_for('main.dashboard') }}"
+            class="text-primary font-semibold border-b-2 border-primary pb-1"
+          >
+            Dashboard
+          </a>
+          <!-- <a
+            href="{{ url_for('visualizations.index') }}"
+            class="text-slate-600 hover:text-primary transition-colors pb-1 hover:border-b-2 hover:border-primary"
+          >
+            Visualizations
+          </a> -->
+        </nav>
+      </div>
+
+      <!-- Right: User + Logout -->
+      <div class="flex items-center gap-4">
+        <span class="text-sm font-medium">{{ user.name }}</span>
+        <a
+          href="{{ url_for('auth.logout') }}"
+          class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+        >
+          Logout
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="max-w-7xl mx-auto px-4 py-8">
+    <h2 class="text-3xl font-bold mb-6">Welcome back, {{ user.name }}! 👋</h2>
+
+    <!-- Stats -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div class="bg-white p-6 rounded-xl shadow">
+        <div class="flex justify-between items-start mb-2">
+          <div>
+            <p class="text-3xl font-bold">{{ stats.total_files }}</p>
+            <p class="text-sm text-gray-600">Total Files</p>
+          </div>
+          <div class="p-2 bg-blue-50 text-blue-500 rounded-lg">
+            <span class="material-symbols-outlined">description</span>
+          </div>
+        </div>
+      </div>
+      <div class="bg-white p-6 rounded-xl shadow">
+        <div class="flex justify-between items-start mb-2">
+          <div>
+            <p class="text-3xl font-bold">{{ stats.total_queries }}</p>
+            <p class="text-sm text-gray-600">Queries Made</p>
+          </div>
+          <div class="p-2 bg-green-50 text-green-500 rounded-lg">
+            <span class="material-symbols-outlined">chat_bubble</span>
+          </div>
+        </div>
+      </div>
+      <div class="bg-white p-6 rounded-xl shadow">
+        <div class="flex justify-between items-start mb-2">
+          <div>
+            <p class="text-3xl font-bold">{{ stats.storage_mb }}MB</p>
+            <p class="text-sm text-gray-600">Storage Used</p>
+          </div>
+          <div class="p-2 bg-purple-50 text-purple-500 rounded-lg">
+            <span class="material-symbols-outlined">cloud</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upload Section -->
+    <div class="bg-white p-8 rounded-xl shadow mb-8">
+      <h3 class="text-xl font-bold mb-4">Upload Your Data</h3>
+      <form id="uploadForm" enctype="multipart/form-data" class="space-y-4">
+        <div
+          class="border-2 border-dashed border-gray-300 rounded-xl p-12 text-center hover:border-primary transition-colors cursor-pointer"
+          id="dropZone"
+        >
+          <span
+            class="material-symbols-outlined text-6xl text-primary mb-4 block"
+            >upload</span
+          >
+          <p class="text-lg font-semibold mb-2">Drag & drop your file here</p>
+          <p class="text-sm text-gray-500 mb-4">or click to browse</p>
+          <input
+            type="file"
+            name="file"
+            id="fileInput"
+            accept=".xlsx,.xls,.csv"
+            class="hidden"
+          />
+          <label
+            for="fileInput"
+            class="cursor-pointer px-6 py-3 bg-primary text-white rounded-lg inline-block hover:bg-opacity-90 transition-colors"
+          >
+            Choose File
+          </label>
+          <p class="text-xs text-gray-400 mt-4">
+            Supports: Excel (.xlsx, .xls), CSV (max 16MB)
+          </p>
+        </div>
+        <div id="fileInfo" class="hidden bg-blue-50 p-4 rounded-lg">
+          <p class="text-sm font-medium">
+            Selected: <span id="fileName"></span>
+          </p>
+          <p class="text-xs text-gray-600">Size: <span id="fileSize"></span></p>
+        </div>
+      </form>
+    </div>
+
+    <!-- Files List -->
+    <div class="bg-white p-8 rounded-xl shadow">
+      <h3 class="text-xl font-bold mb-4">Your Files ({{ files|length }})</h3>
+      {% if files %}
+      <div class="space-y-4">
+        {% for file in files %}
+        <div class="border p-4 rounded-lg hover:shadow-md transition-shadow">
+          <div class="flex justify-between items-center">
             <div class="flex items-center gap-4">
-                <span class="text-sm font-medium">{{ user.name }}</span>
-                <a href="{{ url_for('auth.logout') }}" 
-                   class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">
-                    Logout
-                </a>
+              <div class="p-3 bg-green-50 rounded-lg">
+                <span class="material-symbols-outlined text-green-600"
+                  >table_chart</span
+                >
+              </div>
+              <div>
+                <p class="font-semibold">{{ file.original_filename }}</p>
+                <p class="text-sm text-gray-500">
+                  {{ file.row_count }} rows × {{ file.column_count or 0 }}
+                  columns • Uploaded: {{ file.uploaded_at.strftime('%Y-%m-%d
+                  %H:%M') }}
+                </p>
+              </div>
             </div>
+            <div class="flex gap-2">
+              <a
+                href="{{ url_for('main.view_file', file_id=file.id) }}"
+                class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-opacity-90 transition-colors flex items-center gap-2"
+              >
+                <span class="material-symbols-outlined text-sm"
+                  >visibility</span
+                >
+                View
+              </a>
+              <button
+                onclick="deleteFile({{ file.id }}, '{{ file.original_filename }}')"
+                class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2"
+              >
+                <span class="material-symbols-outlined text-sm">delete</span>
+                Delete
+              </button>
+            </div>
+          </div>
         </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="text-center py-12">
+        <span
+          class="material-symbols-outlined text-6xl text-gray-300 mb-4 block"
+          >folder_open</span
+        >
+        <p class="text-gray-500 mb-2">No files uploaded yet</p>
+        <p class="text-sm text-gray-400">
+          Upload your first file above to get started!
+        </p>
+      </div>
+      {% endif %}
     </div>
-
-    <!-- Main Content -->
-    <div class="max-w-7xl mx-auto px-4 py-8">
-        <h2 class="text-3xl font-bold mb-6">Welcome back, {{ user.name }}! 👋</h2>
-
-        <!-- Stats -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div class="bg-white p-6 rounded-xl shadow">
-                <div class="flex justify-between items-start mb-2">
-                    <div>
-                        <p class="text-3xl font-bold">{{ stats.total_files }}</p>
-                        <p class="text-sm text-gray-600">Total Files</p>
-                    </div>
-                    <div class="p-2 bg-blue-50 text-blue-500 rounded-lg">
-                        <span class="material-symbols-outlined">description</span>
-                    </div>
-                </div>
-            </div>
-            <div class="bg-white p-6 rounded-xl shadow">
-                <div class="flex justify-between items-start mb-2">
-                    <div>
-                        <p class="text-3xl font-bold">{{ stats.total_queries }}</p>
-                        <p class="text-sm text-gray-600">Queries Made</p>
-                    </div>
-                    <div class="p-2 bg-green-50 text-green-500 rounded-lg">
-                        <span class="material-symbols-outlined">chat_bubble</span>
-                    </div>
-                </div>
-            </div>
-            <div class="bg-white p-6 rounded-xl shadow">
-                <div class="flex justify-between items-start mb-2">
-                    <div>
-                        <p class="text-3xl font-bold">{{ stats.storage_mb }}MB</p>
-                        <p class="text-sm text-gray-600">Storage Used</p>
-                    </div>
-                    <div class="p-2 bg-purple-50 text-purple-500 rounded-lg">
-                        <span class="material-symbols-outlined">cloud</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Upload Section -->
-        <div class="bg-white p-8 rounded-xl shadow mb-8">
-            <h3 class="text-xl font-bold mb-4">Upload Your Data</h3>
-            <form id="uploadForm" enctype="multipart/form-data" class="space-y-4">
-                <div class="border-2 border-dashed border-gray-300 rounded-xl p-12 text-center hover:border-primary transition-colors cursor-pointer" 
-                     id="dropZone">
-                    <span class="material-symbols-outlined text-6xl text-primary mb-4 block">upload</span>
-                    <p class="text-lg font-semibold mb-2">Drag & drop your file here</p>
-                    <p class="text-sm text-gray-500 mb-4">or click to browse</p>
-                    <input type="file" name="file" id="fileInput" accept=".xlsx,.xls,.csv" class="hidden"/>
-                    <label for="fileInput" 
-                           class="cursor-pointer px-6 py-3 bg-primary text-white rounded-lg inline-block hover:bg-opacity-90 transition-colors">
-                        Choose File
-                    </label>
-                    <p class="text-xs text-gray-400 mt-4">Supports: Excel (.xlsx, .xls), CSV (max 16MB)</p>
-                </div>
-                <div id="fileInfo" class="hidden bg-blue-50 p-4 rounded-lg">
-                    <p class="text-sm font-medium">Selected: <span id="fileName"></span></p>
-                    <p class="text-xs text-gray-600">Size: <span id="fileSize"></span></p>
-                </div>
-            </form>
-        </div>
-
-        <!-- Files List -->
-        <div class="bg-white p-8 rounded-xl shadow">
-            <h3 class="text-xl font-bold mb-4">Your Files ({{ files|length }})</h3>
-            {% if files %}
-                <div class="space-y-4">
-                    {% for file in files %}
-                        <div class="border p-4 rounded-lg hover:shadow-md transition-shadow">
-                            <div class="flex justify-between items-center">
-                                <div class="flex items-center gap-4">
-                                    <div class="p-3 bg-green-50 rounded-lg">
-                                        <span class="material-symbols-outlined text-green-600">table_chart</span>
-                                    </div>
-                                    <div>
-                                        <p class="font-semibold">{{ file.original_filename }}</p>
-                                        <p class="text-sm text-gray-500">
-                                            {{ file.row_count }} rows × {{ file.column_count or 0 }} columns • 
-                                            Uploaded: {{ file.uploaded_at.strftime('%Y-%m-%d %H:%M') }}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div class="flex gap-2">
-                                    <a href="{{ url_for('main.view_file', file_id=file.id) }}" 
-                                       class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-opacity-90 transition-colors flex items-center gap-2">
-                                        <span class="material-symbols-outlined text-sm">visibility</span>
-                                        View
-                                    </a>
-                                    <button onclick="deleteFile({{ file.id }}, '{{ file.original_filename }}')" 
-                                            class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2">
-                                        <span class="material-symbols-outlined text-sm">delete</span>
-                                        Delete
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    {% endfor %}
-                </div>
-            {% else %}
-                <div class="text-center py-12">
-                    <span class="material-symbols-outlined text-6xl text-gray-300 mb-4 block">folder_open</span>
-                    <p class="text-gray-500 mb-2">No files uploaded yet</p>
-                    <p class="text-sm text-gray-400">Upload your first file above to get started!</p>
-                </div>
-            {% endif %}
-        </div>
-    </div>
+  </div>
 </div>
 
 <!-- Upload Confirmation Modal -->
-<div id="confirmModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div class="bg-white rounded-xl p-8 max-w-md w-full mx-4 shadow-2xl">
-        <div class="text-center mb-6">
-            <div class="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
-                <span class="material-symbols-outlined text-4xl text-green-600">check_circle</span>
-            </div>
-            <h3 class="text-2xl font-bold mb-2">File Uploaded Successfully!</h3>
-            <p class="text-gray-600 mb-2" id="uploadMessage"></p>
-            <p class="text-sm text-gray-500">What would you like to do?</p>
-        </div>
-        <div class="flex gap-3">
-            <button onclick="goToDashboard()" 
-                    class="flex-1 px-4 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition-colors">
-                Stay Here
-            </button>
-            <button onclick="viewSpreadsheet()" 
-                    class="flex-1 px-4 py-3 bg-primary text-white rounded-lg hover:bg-opacity-90 font-medium transition-colors flex items-center justify-center gap-2">
-                View Data
-                <span class="material-symbols-outlined text-sm">arrow_forward</span>
-            </button>
-        </div>
+<div
+  id="confirmModal"
+  class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+>
+  <div class="bg-white rounded-xl p-8 max-w-md w-full mx-4 shadow-2xl">
+    <div class="text-center mb-6">
+      <div
+        class="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4"
+      >
+        <span class="material-symbols-outlined text-4xl text-green-600"
+          >check_circle</span
+        >
+      </div>
+      <h3 class="text-2xl font-bold mb-2">File Uploaded Successfully!</h3>
+      <p class="text-gray-600 mb-2" id="uploadMessage"></p>
+      <p class="text-sm text-gray-500">What would you like to do?</p>
     </div>
+    <div class="flex gap-3">
+      <button
+        onclick="goToDashboard()"
+        class="flex-1 px-4 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition-colors"
+      >
+        Stay Here
+      </button>
+      <button
+        onclick="viewSpreadsheet()"
+        class="flex-1 px-4 py-3 bg-primary text-white rounded-lg hover:bg-opacity-90 font-medium transition-colors flex items-center justify-center gap-2"
+      >
+        View Data
+        <span class="material-symbols-outlined text-sm">arrow_forward</span>
+      </button>
+    </div>
+  </div>
 </div>
 
 <!-- Loading Modal -->
-<div id="loadingModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div class="bg-white rounded-xl p-8 text-center">
-        <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-primary mx-auto mb-4"></div>
-        <p class="text-lg font-medium">Processing your file...</p>
-        <p class="text-sm text-gray-500">This may take a moment</p>
-    </div>
+<div
+  id="loadingModal"
+  class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+>
+  <div class="bg-white rounded-xl p-8 text-center">
+    <div
+      class="animate-spin rounded-full h-16 w-16 border-b-4 border-primary mx-auto mb-4"
+    ></div>
+    <p class="text-lg font-medium">Processing your file...</p>
+    <p class="text-sm text-gray-500">This may take a moment</p>
+  </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
+{% endblock %} {% block scripts %}
 <script>
-let uploadedFileId = null;
+  let uploadedFileId = null;
 
-// File input handling
-const fileInput = document.getElementById('fileInput');
-const dropZone = document.getElementById('dropZone');
-const fileInfo = document.getElementById('fileInfo');
+  // File input handling
+  const fileInput = document.getElementById("fileInput");
+  const dropZone = document.getElementById("dropZone");
+  const fileInfo = document.getElementById("fileInfo");
 
-fileInput.addEventListener('change', handleFileSelect);
-dropZone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener("change", handleFileSelect);
+  dropZone.addEventListener("click", () => fileInput.click());
 
-// Drag and drop
-dropZone.addEventListener('dragover', (e) => {
+  // Drag and drop
+  dropZone.addEventListener("dragover", (e) => {
     e.preventDefault();
-    dropZone.classList.add('border-primary', 'bg-blue-50');
-});
+    dropZone.classList.add("border-primary", "bg-blue-50");
+  });
 
-dropZone.addEventListener('dragleave', () => {
-    dropZone.classList.remove('border-primary', 'bg-blue-50');
-});
+  dropZone.addEventListener("dragleave", () => {
+    dropZone.classList.remove("border-primary", "bg-blue-50");
+  });
 
-dropZone.addEventListener('drop', (e) => {
+  dropZone.addEventListener("drop", (e) => {
     e.preventDefault();
-    dropZone.classList.remove('border-primary', 'bg-blue-50');
-    
+    dropZone.classList.remove("border-primary", "bg-blue-50");
+
     const files = e.dataTransfer.files;
     if (files.length > 0) {
-        fileInput.files = files;
-        handleFileSelect();
+      fileInput.files = files;
+      handleFileSelect();
     }
-});
+  });
 
-function handleFileSelect() {
+  function handleFileSelect() {
     const file = fileInput.files[0];
     if (file) {
-        // Show file info
-        document.getElementById('fileName').textContent = file.name;
-        document.getElementById('fileSize').textContent = (file.size / 1024 / 1024).toFixed(2) + ' MB';
-        fileInfo.classList.remove('hidden');
-        
-        // Auto-upload
-        uploadFile();
-    }
-}
+      // Show file info
+      document.getElementById("fileName").textContent = file.name;
+      document.getElementById("fileSize").textContent =
+        (file.size / 1024 / 1024).toFixed(2) + " MB";
+      fileInfo.classList.remove("hidden");
 
-function uploadFile() {
+      // Auto-upload
+      uploadFile();
+    }
+  }
+
+  function uploadFile() {
     const file = fileInput.files[0];
     if (!file) return;
-    
+
     const formData = new FormData();
-    formData.append('file', file);
-    
+    formData.append("file", file);
+
     // Show loading
-    document.getElementById('loadingModal').classList.remove('hidden');
-    
+    document.getElementById("loadingModal").classList.remove("hidden");
+
     fetch('{{ url_for("main.upload_file") }}', {
-        method: 'POST',
-        body: formData
+      method: "POST",
+      body: formData,
     })
-    .then(response => response.json())
-    .then(data => {
-        document.getElementById('loadingModal').classList.add('hidden');
-        
-        if (data.success) {
-            uploadedFileId = data.file.id;
-            document.getElementById('uploadMessage').textContent = 
-                `${data.file.filename} (${data.file.rows} rows × ${data.file.columns} columns)`;
-            document.getElementById('confirmModal').classList.remove('hidden');
-        } else {
-            alert('Error: ' + data.message);
-            fileInfo.classList.add('hidden');
-            fileInput.value = '';
-        }
-    })
-    .catch(error => {
-        document.getElementById('loadingModal').classList.add('hidden');
-        alert('Upload failed: ' + error);
-        fileInfo.classList.add('hidden');
-        fileInput.value = '';
-    });
-}
+      .then((response) => response.json())
+      .then((data) => {
+        document.getElementById("loadingModal").classList.add("hidden");
 
-function viewSpreadsheet() {
+        if (data.success) {
+          uploadedFileId = data.file.id;
+          document.getElementById("uploadMessage").textContent =
+            `${data.file.filename} (${data.file.rows} rows × ${data.file.columns} columns)`;
+          document.getElementById("confirmModal").classList.remove("hidden");
+        } else {
+          alert("Error: " + data.message);
+          fileInfo.classList.add("hidden");
+          fileInput.value = "";
+        }
+      })
+      .catch((error) => {
+        document.getElementById("loadingModal").classList.add("hidden");
+        alert("Upload failed: " + error);
+        fileInfo.classList.add("hidden");
+        fileInput.value = "";
+      });
+  }
+
+  function viewSpreadsheet() {
     window.location.href = `/file/${uploadedFileId}`;
-}
+  }
 
-function goToDashboard() {
-    document.getElementById('confirmModal').classList.add('hidden');
+  function goToDashboard() {
+    document.getElementById("confirmModal").classList.add("hidden");
     window.location.reload();
-}
+  }
 
-function deleteFile(fileId, fileName) {
+  function deleteFile(fileId, fileName) {
     if (!confirm(`Are you sure you want to delete "${fileName}"?`)) return;
-    
+
     fetch(`/file/${fileId}/delete`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
     })
-    .then(response => response.json())
-    .then(data => {
+      .then((response) => response.json())
+      .then((data) => {
         if (data.success) {
-            window.location.reload();
+          window.location.reload();
         } else {
-            alert('Delete failed: ' + data.message);
+          alert("Delete failed: " + data.message);
         }
-    })
-    .catch(error => alert('Error: ' + error));
-}
+      })
+      .catch((error) => alert("Error: " + error));
+  }
 </script>
 {% endblock %}
