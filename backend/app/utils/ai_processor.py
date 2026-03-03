@@ -1,334 +1,318 @@
 """
 AI Processor - Natural Language to SQL Conversion
-IMPROVED: Better error handling and column awareness
+IMPROVED: Fully generic, schema-aware, handles metadata questions
 """
 import ollama
-import json
 import re
 from ..utils.db_utils import execute_query
 
 
-def process_natural_language_query(question, table_name, schema):
+# ---------------------------------------------------------------------------
+# Intent detection
+# ---------------------------------------------------------------------------
+
+def detect_intent(question: str, schema: dict) -> str:
     """
-    Convert natural language question to SQL and execute
-    IMPROVED: Shows available columns if query fails
+    Classify the question before touching SQL.
+    Returns one of: 'schema', 'count', 'aggregate', 'show'
     """
-    
-    # Check if this is definitely a "show/display" query
-    question_lower = question.lower()
-    is_show_query = any(word in question_lower for word in ['show', 'display', 'list', 'find all', 'get all', 'give me'])
-    is_count_only = 'count' in question_lower and 'show' not in question_lower and 'display' not in question_lower
-    
-    # First, try to map user's column names to actual columns
-    column_mapping = fuzzy_match_columns(question_lower, schema['columns'])
-    
-    # Create enhanced prompt for Llama
-    if is_show_query and not is_count_only:
-        prompt = f"""You are a SQL expert. Convert this natural language question to a SQL SELECT query.
+    q = question.lower()
 
-Table: {table_name}
-ACTUAL COLUMNS (use these EXACT names): {', '.join(schema['columns'])}
+    schema_keywords = [
+        'what are the columns', 'list columns', 'show columns',
+        'what columns', 'column names', 'fields', 'what data',
+        'what information', 'structure', 'schema', 'headers',
+        'what is in', "what's in", 'describe',
+    ]
+    if any(kw in q for kw in schema_keywords):
+        return 'schema'
 
-Question: {question}
+    if re.search(r'\bhow many\b|\bcount\b|\btotal number\b', q) and \
+       not any(w in q for w in ['show', 'display', 'list', 'find', 'get']):
+        return 'count'
 
-CRITICAL RULES:
-1. This is a DISPLAY/SHOW query - use SELECT *
-2. DO NOT use COUNT(*) - the user wants to see rows
-3. Column names MUST be from the list above
-4. If question mentions "students", "exam", "scores" etc but those columns don't exist, use Column_1, Column_2, Column_3 etc
-5. For filtering, identify which column likely contains the data (e.g., Column_3 for scores)
-6. Return ONLY the SQL query, nothing else
-7. Limit to 1000 rows maximum
+    agg_keywords = ['average', 'avg', 'mean', 'sum', 'total', 'maximum',
+                    'minimum', 'max', 'min', 'highest', 'lowest']
+    if any(kw in q for kw in agg_keywords):
+        return 'aggregate'
 
-Example - if columns are Column_1, Column_2, Column_3:
-Question: "Show students where exam scores > 80"
-SQL: SELECT * FROM {table_name} WHERE Column_3 > 80 LIMIT 1000;
+    return 'show'
 
-Now generate SQL for: {question}
-Available columns: {', '.join(schema['columns'])}
 
-SQL:"""
-    else:
-        prompt = f"""You are a SQL expert. Convert the natural language question to a SQL query.
+# ---------------------------------------------------------------------------
+# Schema question handler — no SQL needed
+# ---------------------------------------------------------------------------
 
-Table: {table_name}
-There might me be a Spelling Error in your query. Use Actual Column Names (use EXACTLY as listed): {', '.join(schema['columns'])}
+def handle_schema_question(schema: dict) -> dict:
+    cols = schema['columns']
+    sample = schema.get('sample_values', {})  # optional: {col: [val, val, ...]}
 
-Question: {question}
+    lines = []
+    for col in cols:
+        if sample and col in sample:
+            examples = ', '.join(str(v) for v in sample[col][:3])
+            lines.append(f"  • {col} — e.g. {examples}")
+        else:
+            lines.append(f"  • {col}")
 
-Rules:
-1. Return ONLY valid SQLite SQL query
-2. For "how many" or "count" queries → Use COUNT(*)
-3. For "show", "display" queries → Use SELECT * with WHERE
-4. Column names MUST be from the list above
-5. If question refers to columns that don't exist (like "exam scores"), guess which actual column (like Column_3)
-6. Limit SELECT queries to 1000 rows
-7. Always end with semicolon
+    answer = f"Your table has {len(cols)} column(s):\n" + '\n'.join(lines)
 
-Available columns: {', '.join(schema['columns'])}
+    return {
+        'result_type': 'value',
+        'answer': answer,
+        'value': None,
+        'sql_query': None,
+    }
 
-SQL Query:"""
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+
+def process_natural_language_query(question: str, table_name: str, schema: dict) -> dict:
+    """
+    Convert a natural language question to SQL and execute it.
+    Handles metadata questions without touching the DB.
+    """
+    intent = detect_intent(question, schema)
+
+    # Answer schema questions immediately — no SQL required
+    if intent == 'schema':
+        return handle_schema_question(schema)
+
+    # Build a fully generic prompt — no hardcoded column assumptions
+    prompt = build_prompt(question, table_name, schema, intent)
 
     try:
-        # Call Ollama
         response = ollama.chat(
             model='llama3.2:3b',
-            messages=[{
-                'role': 'user',
-                'content': prompt
-            }],
-            options={
-                'temperature': 0.1,
-            }
+            messages=[{'role': 'user', 'content': prompt}],
+            options={'temperature': 0.1},
         )
-        
-        sql_query = response['message']['content'].strip()
-        sql_query = clean_sql_query(sql_query)
-        
+        sql_query = clean_sql_query(response['message']['content'].strip())
         print(f"Generated SQL: {sql_query}")
-        
-        # Execute the query
+
         try:
             result = execute_query(sql_query, table_name)
         except Exception as e:
-            # Query failed - try fallback
-            print(f"Query failed: {str(e)}")
+            print(f"Query failed: {e}")
             return create_helpful_error_response(question, schema, str(e))
-        
-        # Determine result type and format response
-        if is_single_value_query(sql_query):
-            value = result['rows'][0][0] if result['rows'] else 0
-            answer = format_single_value_answer(question, value, result['columns'][0] if result['columns'] else 'count')
-            
-            return {
-                'result_type': 'value',
-                'answer': answer,
-                'value': value,
-                'sql_query': sql_query
-            }
-        else:
-            if len(result['rows']) == 0:
-                # No results - give helpful message
-                return create_no_results_response(question, schema)
-            
-            answer = format_table_answer(question, len(result['rows']))
-            
-            return {
-                'result_type': 'table',
-                'answer': answer,
-                'columns': result['columns'],
-                'rows': result['rows'],
-                'sql_query': sql_query
-            }
-            
+
+        return format_result(question, sql_query, result, schema, intent)
+
     except Exception as e:
-        print(f"AI processing error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        
-        # Fallback: Use pattern matching
-        return fallback_query_processing(question, table_name, schema)
+        print(f"AI processing error: {e}")
+        import traceback; traceback.print_exc()
+        return fallback_query_processing(question, table_name, schema, intent)
 
 
-def fuzzy_match_columns(question, columns):
-    """Try to map terms in question to actual column names"""
-    mapping = {}
-    
-    common_terms = {
-        'score': ['Column_3', 'Column_4', 'Column_5'],
-        'exam': ['Column_3', 'Column_4', 'Column_5'],
-        'marks': ['Column_3', 'Column_4', 'Column_5'],
-        'grade': ['Column_3', 'Column_4'],
-        'name': ['Column_1', 'Column_2'],
-        'student': ['Column_1'],
-        'age': ['Column_2', 'Column_6'],
-    }
-    
-    for term, possible_cols in common_terms.items():
-        if term in question:
-            for col in possible_cols:
-                if col in columns:
-                    mapping[term] = col
-                    break
-    
-    return mapping
+# ---------------------------------------------------------------------------
+# Generic prompt builder
+# ---------------------------------------------------------------------------
+
+def build_prompt(question: str, table_name: str, schema: dict, intent: str) -> str:
+    cols = schema['columns']
+    col_list = ', '.join(f'"{c}"' for c in cols)
+
+    # Provide sample values if available so the LLM can pick the right column
+    sample_hints = ''
+    if schema.get('sample_values'):
+        rows = []
+        for col, vals in schema['sample_values'].items():
+            rows.append(f'  "{col}": {vals[:3]}')
+        sample_hints = 'Sample values per column:\n' + '\n'.join(rows) + '\n\n'
+
+    if intent in ('show',):
+        instruction = (
+            "This is a SHOW/FILTER query. Use SELECT * with appropriate WHERE clause.\n"
+            "Do NOT use COUNT(*). Return matching rows.\n"
+            "Add LIMIT 1000."
+        )
+    elif intent == 'count':
+        instruction = "This is a COUNT query. Use SELECT COUNT(*) ... or COUNT with a filter."
+    elif intent == 'aggregate':
+        instruction = (
+            "This is an AGGREGATE query. Use SUM, AVG, MAX, MIN etc. as appropriate.\n"
+            "Pick the most relevant numeric column based on the question."
+        )
+    else:
+        instruction = "Generate the most appropriate SQL query."
+
+    return f"""You are a SQL expert working with SQLite.
+
+Table name: {table_name}
+Columns (use EXACTLY as written, including case): {col_list}
+
+{sample_hints}Task: {instruction}
+
+RULES:
+1. Use ONLY columns from the list above — do not invent column names.
+2. If the question references a concept (e.g. "salary", "age") look for the closest matching column by name.
+3. String comparisons: use LIKE for partial matches, = for exact.
+4. Return ONLY the raw SQL query — no explanation, no markdown fences.
+5. End with a semicolon.
+
+Question: {question}
+
+SQL:"""
 
 
-def create_helpful_error_response(question, schema, error):
-    """Create helpful response when query fails"""
+# ---------------------------------------------------------------------------
+# Result formatting
+# ---------------------------------------------------------------------------
+
+def format_result(question: str, sql_query: str, result: dict, schema: dict, intent: str) -> dict:
+    if is_single_value_query(sql_query):
+        value = result['rows'][0][0] if result['rows'] else 0
+        col_name = result['columns'][0] if result['columns'] else 'result'
+        return {
+            'result_type': 'value',
+            'answer': format_single_value_answer(question, value, col_name),
+            'value': value,
+            'sql_query': sql_query,
+        }
+
+    if not result['rows']:
+        return create_no_results_response(question, schema)
+
     return {
-        'result_type': 'value',
-        'answer': f"I couldn't execute that query. Your data has these columns: **{', '.join(schema['columns'])}**. Try asking about these specific columns instead!",
-        'value': None,
-        'sql_query': None
+        'result_type': 'table',
+        'answer': format_table_answer(question, len(result['rows'])),
+        'columns': result['columns'],
+        'rows': result['rows'],
+        'sql_query': sql_query,
     }
 
 
-def create_no_results_response(question, schema):
-    """Create helpful response when no results found"""
-    return {
-        'result_type': 'value',
-        'answer': f"No records found matching your criteria. Your data has columns: **{', '.join(schema['columns'])}**. Try checking which column contains the values you're filtering on (e.g., 'Show rows where Column_3 > 80').",
-        'value': 0,
-        'sql_query': None
-    }
+# ---------------------------------------------------------------------------
+# Fallback — simple pattern matching, no column assumptions
+# ---------------------------------------------------------------------------
+
+def fallback_query_processing(question: str, table_name: str, schema: dict, intent: str) -> dict:
+    q = question.lower()
+    cols = schema['columns']
+
+    # Numeric filter heuristic: find numeric columns from sample values
+    numeric_cols = [
+        c for c in cols
+        if schema.get('sample_values') and
+        all(isinstance(v, (int, float)) for v in schema['sample_values'].get(c, []))
+    ]
+    filter_col = numeric_cols[0] if numeric_cols else (cols[0] if cols else 'id')
+
+    numbers = re.findall(r'\d+\.?\d*', q)
+    where = ''
+    if numbers:
+        val = numbers[0]
+        if any(w in q for w in ['greater', 'above', 'more', 'over', '>']):
+            where = f'WHERE "{filter_col}" > {val}'
+        elif any(w in q for w in ['less', 'below', 'under', '<']):
+            where = f'WHERE "{filter_col}" < {val}'
+
+    if intent in ('show',):
+        sql = f'SELECT * FROM {table_name} {where} LIMIT 1000;'
+    elif intent == 'count':
+        sql = f'SELECT COUNT(*) as count FROM {table_name} {where};'
+    else:
+        sql = f'SELECT * FROM {table_name} LIMIT 100;'
+
+    try:
+        result = execute_query(sql, table_name)
+        return format_result(question, sql, result, schema, intent)
+    except Exception as e:
+        return create_helpful_error_response(question, schema, str(e))
 
 
-def clean_sql_query(sql):
-    """Clean SQL query from AI response"""
+# ---------------------------------------------------------------------------
+# Utility helpers
+# ---------------------------------------------------------------------------
+
+def clean_sql_query(sql: str) -> str:
     sql = re.sub(r'```sql\n?', '', sql)
     sql = re.sub(r'```\n?', '', sql)
-    sql = re.sub(r'`', '', sql)
-    
-    lines = sql.split('\n')
-    sql_lines = []
-    found_sql = False
-    
-    for line in lines:
-        line_upper = line.strip().upper()
-        if line_upper.startswith(('SELECT', 'WITH', 'INSERT', 'UPDATE', 'DELETE')):
-            found_sql = True
-        if found_sql:
-            sql_lines.append(line)
-    
-    if sql_lines:
-        sql = '\n'.join(sql_lines)
-    
+    sql = sql.replace('`', '')
+
+    # Extract from first SQL keyword
+    for line in sql.split('\n'):
+        if line.strip().upper().startswith(('SELECT', 'WITH', 'INSERT', 'UPDATE', 'DELETE')):
+            idx = sql.upper().find(line.strip().upper())
+            sql = sql[idx:]
+            break
+
+    # Keep only up to first semicolon
     if ';' in sql:
         sql = sql.split(';')[0] + ';'
-    
-    sql = sql.strip()
-    
-    if not sql.endswith(';'):
-        sql += ';'
-    
-    return sql
+
+    return sql.strip() if sql.strip().endswith(';') else sql.strip() + ';'
 
 
-def is_single_value_query(sql):
-    """Check if query returns a single value"""
-    sql_upper = sql.upper()
-    
-    aggregations = ['COUNT(', 'SUM(', 'AVG(', 'MAX(', 'MIN(']
-    
-    for agg in aggregations:
-        if agg in sql_upper:
-            select_part = sql_upper.split('FROM')[0]
-            if select_part.count(',') == 0:
-                return True
-    
-    return False
+def is_single_value_query(sql: str) -> bool:
+    upper = sql.upper()
+    if 'FROM' not in upper:
+        return False
+    select_part = upper.split('FROM')[0]
+    return (
+        any(agg in select_part for agg in ['COUNT(', 'SUM(', 'AVG(', 'MAX(', 'MIN('])
+        and select_part.count(',') == 0
+    )
 
 
-def format_single_value_answer(question, value, column_name):
-    """Format natural language answer for single value"""
-    question_lower = question.lower()
-    
+def format_single_value_answer(question: str, value, col_name: str) -> str:
+    q = question.lower()
     try:
-        if isinstance(value, float):
-            if value.is_integer():
-                value = int(value)
-            else:
-                value = round(value, 2)
-    except:
+        if isinstance(value, float) and value.is_integer():
+            value = int(value)
+        elif isinstance(value, float):
+            value = round(value, 2)
+    except Exception:
         pass
-    
-    if 'count' in question_lower or 'how many' in question_lower:
-        return f"Total count is {value} matching your criteria."
-    elif 'sum' in question_lower or 'total' in question_lower:
-        return f"The total is **{value}**."
-    elif 'average' in question_lower or 'mean' in question_lower or 'avg' in question_lower:
-        return f"The average is **{value}**."
-    elif 'maximum' in question_lower or 'max' in question_lower or 'highest' in question_lower:
-        return f"The maximum value is **{value}**."
-    elif 'minimum' in question_lower or 'min' in question_lower or 'lowest' in question_lower:
-        return f"The minimum value is **{value}**."
+
+    if any(w in q for w in ['how many', 'count']):
+        return f"There are {value} records matching your criteria."
+    elif any(w in q for w in ['sum', 'total']):
+        return f"The total is {value}."
+    elif any(w in q for w in ['average', 'mean', 'avg']):
+        return f"The average is {value}."
+    elif any(w in q for w in ['maximum', 'max', 'highest']):
+        return f"The maximum is {value}."
+    elif any(w in q for w in ['minimum', 'min', 'lowest']):
+        return f"The minimum is {value}."
     else:
-        return f"The result is **{value}**."
+        return f"Result: {value}."
 
 
-def format_table_answer(question, row_count):
-    """Format natural language answer for table results"""
+def format_table_answer(question: str, row_count: int) -> str:
     if row_count == 0:
         return "No records found matching your criteria."
     elif row_count == 1:
-        return f"Found **1 record** matching your query. Displaying below in the spreadsheet."
+        return "Found 1 record matching your query."
     elif row_count >= 1000:
-        return f"Found **{row_count}** records (showing first 1000). Results are displayed in the spreadsheet below."
+        return f"Found {row_count}+ records (showing first 1000)."
     else:
-        return f"Found **{row_count}** records matching your query. Results are displayed in the spreadsheet below."
+        return f"Found {row_count} records matching your query."
 
 
-def fallback_query_processing(question, table_name, schema):
-    """
-    Fallback method using simple pattern matching
-    IMPROVED: Better column awareness
-    """
-    question_lower = question.lower()
-    columns = schema['columns']
-    
-    # Pattern: "show/display ... where COLUMN OPERATOR VALUE"
-    if any(word in question_lower for word in ['show', 'display', 'list', 'find', 'get']):
-        where_clause = ""
-        
-        # Try to extract number from question
-        numbers = re.findall(r'\d+', question_lower)
-        
-        if numbers and ('greater' in question_lower or '>' in question_lower or 'more' in question_lower or 'above' in question_lower):
-            # Assume Column_3 for scores (common pattern)
-            value = numbers[0]
-            if 'Column_3' in columns:
-                where_clause = f"WHERE Column_3 > {value}"
-            elif len(columns) >= 3:
-                where_clause = f"WHERE {columns[2]} > {value}"
-        
-        elif numbers and ('less' in question_lower or '<' in question_lower or 'below' in question_lower):
-            value = numbers[0]
-            if 'Column_3' in columns:
-                where_clause = f"WHERE Column_3 < {value}"
-            elif len(columns) >= 3:
-                where_clause = f"WHERE {columns[2]} < {value}"
-        
-        sql = f"SELECT * FROM {table_name} {where_clause} LIMIT 1000;"
-        
-        try:
-            result = execute_query(sql)
-            
-            if len(result['rows']) == 0:
-                return create_no_results_response(question, schema)
-            
-            return {
-                'result_type': 'table',
-                'answer': format_table_answer(question, len(result['rows'])),
-                'columns': result['columns'],
-                'rows': result['rows'],
-                'sql_query': sql
-            }
-        except Exception as e:
-            return create_helpful_error_response(question, schema, str(e))
-    
-    # Count query
-    elif 'count' in question_lower or 'how many' in question_lower:
-        sql = f"SELECT COUNT(*) as count FROM {table_name};"
-        result = execute_query(sql)
-        value = result['rows'][0][0]
-        
-        return {
-            'result_type': 'value',
-            'answer': f"Found **{value}** total records.",
-            'value': value,
-            'sql_query': sql
-        }
-    
-    # Default: show first 100 rows
-    else:
-        sql = f"SELECT * FROM {table_name} LIMIT 100;"
-        result = execute_query(sql)
-        
-        return {
-            'result_type': 'table',
-            'answer': "Showing first 100 records.",
-            'columns': result['columns'],
-            'rows': result['rows'],
-            'sql_query': sql
-        }
+def create_helpful_error_response(question: str, schema: dict, error: str) -> dict:
+    col_list = ', '.join(f'**{c}**' for c in schema['columns'])
+    return {
+        'result_type': 'value',
+        'answer': (
+            f"I couldn't run that query. Available columns are: {col_list}.\n"
+            f"Try rephrasing using exact column names, e.g. *\"Show rows where Salary > 50000\"*."
+        ),
+        'value': None,
+        'sql_query': None,
+    }
+
+
+def create_no_results_response(question: str, schema: dict) -> dict:
+    col_list = ', '.join(f'**{c}**' for c in schema['columns'])
+    return {
+        'result_type': 'value',
+        'answer': (
+            f"No records matched your criteria. Your columns are: {col_list}.\n"
+            "Try relaxing your filter or check the column name and value."
+        ),
+        'value': 0,
+        'sql_query': None,
+    }

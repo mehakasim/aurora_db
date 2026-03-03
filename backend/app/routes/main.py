@@ -5,6 +5,8 @@ from ..models.user import db, UploadedFile
 from ..utils.file_processor import process_uploaded_file
 from ..utils.db_utils import get_table_preview, get_table_schema, execute_query, drop_table
 import os
+import csv
+import io
 
 bp = Blueprint('main', __name__)
 
@@ -166,33 +168,54 @@ def delete_file(file_id):
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
-
 @bp.route('/file/<int:file_id>/download')
 @login_required
 def download_file(file_id):
-    """
-    Download original uploaded file
-    FIXED: Added file existence check
-    """
     try:
         file_record = UploadedFile.query.filter_by(
             id=file_id,
             user_id=current_user.id
         ).first_or_404()
-        
-        # Check if file exists
-        if not os.path.exists(file_record.file_path):
-            flash('File not found on server', 'error')
+
+        # Always resolve to an absolute path so send_file works correctly
+        abs_path = os.path.abspath(file_record.file_path)
+        print(f"[DOWNLOAD] Resolved path: {abs_path}")
+
+        if os.path.exists(abs_path):
+            return send_file(
+                abs_path,
+                as_attachment=True,
+                download_name=file_record.original_filename
+            )
+
+        # Fallback: regenerate CSV from the database table
+        print("[DOWNLOAD] File missing on disk — regenerating from DB")
+        import csv, io
+
+        data = get_table_preview(file_record.table_name, limit=100_000)
+
+        if not data or not data.get('columns'):
+            flash('File data could not be found.', 'error')
             return redirect(url_for('main.dashboard'))
-        
-        # Send file for download
+
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(data['columns'])
+        writer.writerows(data['rows'])
+        buf.seek(0)
+
+        base_name = os.path.splitext(file_record.original_filename)[0]
+
         return send_file(
-            file_record.file_path,
+            io.BytesIO(buf.getvalue().encode('utf-8')),
             as_attachment=True,
-            download_name=file_record.original_filename
+            download_name=base_name + '.csv',
+            mimetype='text/csv'
         )
-        
+
     except Exception as e:
-        print(f"Download error: {str(e)}")
+        import traceback
+        print(f"[DOWNLOAD] Error: {e}")
+        traceback.print_exc()
         flash(f'Error downloading file: {str(e)}', 'error')
         return redirect(url_for('main.dashboard'))
