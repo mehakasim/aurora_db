@@ -108,6 +108,46 @@ def view_file(file_id):
         return redirect(url_for('main.dashboard'))
 
 
+@bp.route('/api/file/<int:file_id>/data')
+@login_required
+def get_file_data(file_id):
+    """
+    API endpoint to get file data with pagination
+    NEW: Added for "Load More" functionality
+    """
+    try:
+        # Verify file belongs to user
+        file_record = UploadedFile.query.filter_by(
+            id=file_id,
+            user_id=current_user.id
+        ).first_or_404()
+        
+        # Get pagination parameters from URL
+        offset = request.args.get('offset', 0, type=int)
+        limit = request.args.get('limit', 100, type=int)
+        
+        # Limit maximum rows per request (prevent overload)
+        limit = min(limit, 5000)
+        
+        # Get data from database
+        data = get_table_preview(file_record.table_name, limit=limit, offset=offset)
+        
+        return jsonify({
+            'success': True,
+            'data': data,
+            'offset': offset,
+            'limit': limit,
+            'rows_returned': len(data['rows'])
+        })
+        
+    except Exception as e:
+        print(f"Get data error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
+
 @bp.route('/file/<int:file_id>/delete', methods=['POST'])
 @login_required
 def delete_file(file_id):
@@ -130,15 +170,29 @@ def delete_file(file_id):
 @bp.route('/file/<int:file_id>/download')
 @login_required
 def download_file(file_id):
-    """Download original uploaded file"""
+    """
+    Download original uploaded file
+    FIXED: Added file existence check
+    """
     try:
-        file_record = UploadedFile.query.filter_by(id=file_id, user_id=current_user.id).first_or_404()
+        file_record = UploadedFile.query.filter_by(
+            id=file_id,
+            user_id=current_user.id
+        ).first_or_404()
         
-        if os.path.exists(file_record.file_path):
-            return send_file(file_record.file_path, as_attachment=True, download_name=file_record.original_filename)
-        else:
-            flash('File not found', 'error')
+        # Check if file exists
+        if not os.path.exists(file_record.file_path):
+            flash('File not found on server', 'error')
             return redirect(url_for('main.dashboard'))
+        
+        # Send file for download
+        return send_file(
+            file_record.file_path,
+            as_attachment=True,
+            download_name=file_record.original_filename
+        )
+        
     except Exception as e:
+        print(f"Download error: {str(e)}")
         flash(f'Error downloading file: {str(e)}', 'error')
         return redirect(url_for('main.dashboard'))

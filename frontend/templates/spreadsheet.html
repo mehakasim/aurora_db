@@ -58,6 +58,37 @@
     .query-result-row {
         background-color: #ecfdf5 !important;
     }
+    
+    /* Voice Animation */
+    @keyframes pulse-ring {
+        0% { transform: scale(0.95); opacity: 1; }
+        50% { transform: scale(1.05); opacity: 0.7; }
+        100% { transform: scale(0.95); opacity: 1; }
+    }
+    .recording {
+        animation: pulse-ring 1.5s ease-in-out infinite;
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    }
+    .voice-wave {
+        display: inline-flex;
+        gap: 3px;
+        align-items: center;
+        height: 20px;
+    }
+    .voice-wave span {
+        width: 3px;
+        background: white;
+        animation: wave 1s ease-in-out infinite;
+        border-radius: 3px;
+    }
+    .voice-wave span:nth-child(1) { animation-delay: 0s; }
+    .voice-wave span:nth-child(2) { animation-delay: 0.1s; }
+    .voice-wave span:nth-child(3) { animation-delay: 0.2s; }
+    .voice-wave span:nth-child(4) { animation-delay: 0.3s; }
+    @keyframes wave {
+        0%, 100% { height: 8px; }
+        50% { height: 16px; }
+    }
 </style>
 {% endblock %}
 
@@ -83,14 +114,11 @@
             <button onclick="resetView()" class="bg-gray-200 text-gray-700 px-4 py-1.5 rounded text-sm font-semibold hover:bg-gray-300">
                 Reset View
             </button>
-            
-            <!-- CHARTS BUTTON - Opens visualizations for this file -->
             <a href="{{ url_for('visualizations.view_file_charts', file_id=file.id) }}" 
-               class="bg-purple-500 text-white px-4 py-1.5 rounded text-sm font-semibold hover:bg-purple-600 flex items-center gap-2 transition-all">
+               class="bg-purple-500 text-white px-4 py-1.5 rounded text-sm font-semibold hover:bg-purple-600 flex items-center gap-2">
                 <span class="material-icons-outlined text-sm">bar_chart</span>
                 Charts
             </a>
-            
             <a href="{{ url_for('main.download_file', file_id=file.id) }}" 
                class="bg-primary text-white px-4 py-1.5 rounded text-sm font-semibold hover:opacity-90 flex items-center gap-1">
                 <span class="material-icons-outlined text-sm">download</span>
@@ -109,7 +137,7 @@
             <span class="material-icons-outlined text-lg">refresh</span>
         </button>
         <span class="border-l pl-2" id="rowCount">
-            Showing {{ [preview_data.displayed_rows, 100]|min }} of {{ preview_data.total_rows }} rows
+            Showing <span id="currentRows">{{ [preview_data.displayed_rows, 100]|min }}</span> of {{ preview_data.total_rows }} rows
         </span>
         <span id="queryIndicator" class="hidden ml-2 px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium">
             Query Results
@@ -118,7 +146,7 @@
 
     <!-- Main: Chat Left + Table Right -->
     <main class="flex flex-1 overflow-hidden">
-        <!-- Chat Sidebar (400px) -->
+        <!-- Chat Sidebar -->
         <aside class="w-[400px] flex flex-col border-r border-gray-200 bg-white">
             <div class="p-4 border-b flex justify-between items-center">
                 <h2 class="text-lg font-bold">AI Assistant</h2>
@@ -130,20 +158,18 @@
             <div id="chatMessages" class="flex-1 overflow-y-auto p-6">
                 <div class="text-center mb-6" id="welcomeMessage">
                     <h3 class="text-xl font-bold mb-2">Ask about your data</h3>
-                    <p class="text-sm text-gray-500 mb-4">Natural language queries</p>
+                    <p class="text-sm text-gray-500 mb-4">Type or speak your questions</p>
                     <div class="space-y-2">
                         <button onclick="setQuestion('Show first 10 rows')" 
-                                class="w-full text-left px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded text-sm transition-colors">
+                                class="w-full text-left px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded text-sm">
                             Show first 10 rows
                         </button>
                         <button onclick="setQuestion('What columns exist?')" 
-                                class="w-full text-left px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded text-sm transition-colors">
+                                class="w-full text-left px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded text-sm">
                             What are the columns?
                         </button>
-                        
-                        <!-- CHARTS SUGGESTION -->
                         <button onclick="window.location.href='{{ url_for('visualizations.view_file_charts', file_id=file.id) }}'" 
-                                class="w-full text-left px-3 py-2 bg-purple-50 hover:bg-purple-100 rounded text-sm transition-colors border border-purple-200">
+                                class="w-full text-left px-3 py-2 bg-purple-50 hover:bg-purple-100 rounded text-sm border border-purple-200">
                             <div class="flex items-center gap-2">
                                 <span class="material-icons-outlined text-purple-600 text-lg">bar_chart</span>
                                 <span class="font-medium text-purple-700">View Charts & Insights</span>
@@ -153,23 +179,44 @@
                 </div>
             </div>
 
+            <!-- Chat Input with Voice -->
             <div class="p-4 border-t">
                 <div class="bg-gray-50 rounded-xl p-3 border focus-within:border-primary transition-colors">
-                    <input type="text" id="queryInput" placeholder="Ask about your data..."
+                    <input type="text" id="queryInput" placeholder="Ask about your data or click mic to speak..."
                            class="w-full bg-transparent outline-none text-sm"
                            onkeypress="if(event.key==='Enter') askQuestion()">
                     <div class="flex justify-between items-center mt-2">
-                        <span class="text-xs text-gray-400">Press Enter or click send</span>
+                        <!-- Voice Button -->
+                        <button id="voiceButton" onclick="toggleVoiceInput()" 
+                                class="p-1.5 text-gray-500 hover:text-primary rounded-md transition-colors"
+                                title="Voice input">
+                            <span class="material-icons-outlined text-xl">mic</span>
+                        </button>
+                        
+                        <!-- Recording Indicator -->
+                        <div id="recordingIndicator" class="hidden flex items-center gap-2 text-xs text-red-600">
+                            <div class="voice-wave">
+                                <span></span><span></span><span></span><span></span>
+                            </div>
+                            <span class="font-medium">Listening...</span>
+                        </div>
+                        
+                        <!-- Send Button -->
                         <button onclick="askQuestion()" 
-                                class="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white hover:opacity-90 transition-opacity">
+                                class="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white hover:opacity-90">
                             <span class="material-icons-outlined text-lg">arrow_upward</span>
                         </button>
                     </div>
                 </div>
+                
+                <!-- Voice Status -->
+                <div id="voiceStatus" class="hidden mt-2 text-xs text-center">
+                    <span class="text-gray-500"></span>
+                </div>
             </div>
         </aside>
 
-        <!-- Spreadsheet Table (Flex 1) -->
+        <!-- Spreadsheet Table -->
         <div class="flex-1 flex flex-col overflow-hidden">
             <div class="table-container flex-1" id="tableContainer">
                 <table id="dataTable">
@@ -194,10 +241,19 @@
                 </table>
             </div>
             
-            <div id="pagination" class="border-t p-3 bg-gray-50 text-center">
+            <!-- Pagination Controls -->
+            <div id="pagination" class="border-t p-3 bg-gray-50 flex items-center justify-between">
                 <p class="text-sm text-gray-600">
                     <span id="paginationText">Showing first 100 of {{ preview_data.total_rows }} rows</span>
                 </p>
+                {% if preview_data.total_rows > 100 %}
+                <div class="flex gap-2">
+                    <button id="loadMoreBtn" onclick="loadMoreRows()" 
+                            class="px-4 py-2 bg-primary text-white rounded text-sm font-semibold hover:opacity-90">
+                        Load Next 100 Rows
+                    </button>
+                </div>
+                {% endif %}
             </div>
         </div>
     </main>
@@ -215,8 +271,7 @@
 <div id="loadingOverlay" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
     <div class="bg-white rounded-xl p-8 text-center">
         <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-primary mx-auto mb-4"></div>
-        <p class="text-sm font-medium">Processing your query...</p>
-        <p class="text-xs text-gray-500 mt-1">This may take a moment</p>
+        <p class="text-sm font-medium" id="loadingText">Processing...</p>
     </div>
 </div>
 {% endblock %}
@@ -224,15 +279,144 @@
 {% block scripts %}
 <script>
 const fileId = {{ file.id }};
+const tableName = "{{ file.table_name }}";
 let originalColumns = {{ preview_data.columns|tojson }};
 let originalRows = {{ preview_data.rows[:100]|tojson }};
+let currentLoadedRows = 100;
 let isQueryResult = false;
+
+// Voice Recognition Setup
+let recognition = null;
+let isRecording = false;
+
+if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    
+    // Configuration for accuracy
+    recognition.continuous = true;  // Keep listening
+    recognition.interimResults = true;  // Real-time results
+    recognition.lang = 'en-US';  // Language
+    recognition.maxAlternatives = 1;
+    
+    // Real-time transcription
+    recognition.onresult = function(event) {
+        let interimTranscript = '';
+        let finalTranscript = '';
+        
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+                finalTranscript += transcript + ' ';
+            } else {
+                interimTranscript += transcript;
+            }
+        }
+        
+        // Update input field in real-time
+        const input = document.getElementById('queryInput');
+        if (finalTranscript) {
+            input.value = (input.value + ' ' + finalTranscript).trim();
+        }
+        
+        // Show interim results
+        if (interimTranscript) {
+            document.getElementById('voiceStatus').innerHTML = 
+                `<span class="text-primary italic">"${interimTranscript}"</span>`;
+        }
+    };
+    
+    recognition.onend = function() {
+        if (isRecording) {
+            // Restart if still recording
+            recognition.start();
+        } else {
+            updateVoiceUI(false);
+        }
+    };
+    
+    recognition.onerror = function(event) {
+        console.error('Speech recognition error:', event.error);
+        if (event.error === 'no-speech') {
+            // Continue listening
+            return;
+        }
+        stopVoiceInput();
+        showVoiceError(event.error);
+    };
+} else {
+    console.warn('Speech recognition not supported');
+}
+
+function toggleVoiceInput() {
+    if (!recognition) {
+        alert('Voice input not supported in this browser. Please use Chrome, Edge, or Safari.');
+        return;
+    }
+    
+    if (isRecording) {
+        stopVoiceInput();
+    } else {
+        startVoiceInput();
+    }
+}
+
+function startVoiceInput() {
+    try {
+        isRecording = true;
+        recognition.start();
+        updateVoiceUI(true);
+        document.getElementById('statusText').textContent = 'Listening...';
+    } catch (error) {
+        console.error('Error starting recognition:', error);
+    }
+}
+
+function stopVoiceInput() {
+    isRecording = false;
+    if (recognition) {
+        recognition.stop();
+    }
+    updateVoiceUI(false);
+    document.getElementById('statusText').textContent = 'Ready';
+}
+
+function updateVoiceUI(recording) {
+    const voiceButton = document.getElementById('voiceButton');
+    const recordingIndicator = document.getElementById('recordingIndicator');
+    const voiceStatus = document.getElementById('voiceStatus');
+    
+    if (recording) {
+        voiceButton.classList.add('recording');
+        voiceButton.querySelector('span').textContent = 'mic_off';
+        recordingIndicator.classList.remove('hidden');
+        voiceStatus.classList.remove('hidden');
+    } else {
+        voiceButton.classList.remove('recording');
+        voiceButton.querySelector('span').textContent = 'mic';
+        recordingIndicator.classList.add('hidden');
+        voiceStatus.classList.add('hidden');
+        voiceStatus.innerHTML = '';
+    }
+}
+
+function showVoiceError(error) {
+    const voiceStatus = document.getElementById('voiceStatus');
+    voiceStatus.classList.remove('hidden');
+    voiceStatus.innerHTML = `<span class="text-red-600">Error: ${error}</span>`;
+    setTimeout(() => voiceStatus.classList.add('hidden'), 3000);
+}
 
 function setQuestion(q) {
     document.getElementById('queryInput').value = q;
 }
 
 function askQuestion() {
+    // Stop recording if active
+    if (isRecording) {
+        stopVoiceInput();
+    }
+    
     const question = document.getElementById('queryInput').value.trim();
     if (!question) {
         alert('Please enter a question');
@@ -240,23 +424,19 @@ function askQuestion() {
     }
     
     const chatMessages = document.getElementById('chatMessages');
-    
-    // Hide welcome message
     const welcome = document.getElementById('welcomeMessage');
     if (welcome) welcome.style.display = 'none';
     
-    // User message
     const userMsg = document.createElement('div');
     userMsg.className = 'mb-3 p-3 bg-blue-50 rounded-lg';
     userMsg.innerHTML = `<p class="text-xs font-medium text-blue-900">You</p><p class="text-sm text-blue-800">${escapeHtml(question)}</p>`;
     chatMessages.appendChild(userMsg);
     chatMessages.scrollTop = chatMessages.scrollHeight;
     
-    // Show loading
     document.getElementById('loadingOverlay').classList.remove('hidden');
+    document.getElementById('loadingText').textContent = 'Processing your query...';
     document.getElementById('statusText').textContent = 'Processing query...';
     
-    // Send to backend
     fetch('/api/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -267,17 +447,13 @@ function askQuestion() {
         document.getElementById('loadingOverlay').classList.add('hidden');
         document.getElementById('statusText').textContent = 'Ready';
         
-        if (!data.success) {
-            throw new Error(data.message || 'Query failed');
-        }
+        if (!data.success) throw new Error(data.message || 'Query failed');
         
-        // AI response
         const aiMsg = document.createElement('div');
         aiMsg.className = 'mb-3 p-3 bg-green-50 rounded-lg';
         aiMsg.innerHTML = `<p class="text-xs font-medium text-green-900">AI</p><p class="text-sm text-green-800">${data.answer}</p>`;
         chatMessages.appendChild(aiMsg);
         
-        // Handle result based on type
         if (data.result_type === 'table') {
             updateSpreadsheet(data.data.columns, data.data.rows);
             document.getElementById('queryIndicator').classList.remove('hidden');
@@ -299,6 +475,79 @@ function askQuestion() {
         errorMsg.innerHTML = `<p class="text-xs font-medium text-red-900">Error</p><p class="text-sm text-red-800">${escapeHtml(error.message)}</p>`;
         chatMessages.appendChild(errorMsg);
         chatMessages.scrollTop = chatMessages.scrollHeight;
+    });
+}
+
+// Pagination functions
+function loadMoreRows() {
+    const offset = currentLoadedRows;
+    const limit = 100;
+    
+    document.getElementById('loadingOverlay').classList.remove('hidden');
+    document.getElementById('loadingText').textContent = 'Loading more rows...';
+    
+    fetch(`/api/file/${fileId}/data?offset=${offset}&limit=${limit}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && data.data.rows.length > 0) {
+                appendRows(data.data.rows);
+                currentLoadedRows += data.data.rows.length;
+                document.getElementById('currentRows').textContent = currentLoadedRows;
+                document.getElementById('paginationText').textContent = 
+                    `Showing ${currentLoadedRows} of {{ preview_data.total_rows }} rows`;
+                
+                if (currentLoadedRows >= {{ preview_data.total_rows }}) {
+                    document.getElementById('loadMoreBtn').disabled = true;
+                    document.getElementById('loadMoreBtn').textContent = 'All rows loaded';
+                }
+            }
+            document.getElementById('loadingOverlay').classList.add('hidden');
+        })
+        .catch(error => {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+            alert('Error loading more rows: ' + error);
+        });
+}
+
+function loadAllRows() {
+    if (!confirm('This will load all {{ preview_data.total_rows }} rows. This may take a moment. Continue?')) {
+        return;
+    }
+    
+    document.getElementById('loadingOverlay').classList.remove('hidden');
+    document.getElementById('loadingText').textContent = 'Loading all rows...';
+    
+    fetch(`/api/file/${fileId}/data?offset=100&limit={{ preview_data.total_rows }}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                appendRows(data.data.rows);
+                currentLoadedRows = {{ preview_data.total_rows }};
+                document.getElementById('currentRows').textContent = currentLoadedRows;
+                document.getElementById('paginationText').textContent = 
+                    `Showing all {{ preview_data.total_rows }} rows`;
+                document.getElementById('pagination').innerHTML = 
+                    '<p class="text-sm text-green-600 font-medium">All rows loaded ✓</p>';
+            }
+            document.getElementById('loadingOverlay').classList.add('hidden');
+        })
+        .catch(error => {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+            alert('Error loading rows: ' + error);
+        });
+}
+
+function appendRows(rows) {
+    const tableBody = document.getElementById('tableBody');
+    const startIndex = tableBody.querySelectorAll('tr').length;
+    
+    rows.forEach((row, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td class="row-num">${startIndex + idx + 1}</td>`;
+        row.forEach(cell => {
+            tr.innerHTML += `<td>${cell !== null ? escapeHtml(String(cell)) : ''}</td>`;
+        });
+        tableBody.appendChild(tr);
     });
 }
 
@@ -324,7 +573,7 @@ function updateSpreadsheet(columns, rows) {
     });
     
     document.getElementById('paginationText').textContent = `Showing ${rows.length} query results`;
-    document.getElementById('rowCount').textContent = `Query results: ${rows.length} rows`;
+    document.getElementById('currentRows').textContent = rows.length;
 }
 
 function resetView() {
@@ -347,10 +596,11 @@ function resetView() {
         tableBody.appendChild(tr);
     });
     
+    currentLoadedRows = 100;
     document.getElementById('queryIndicator').classList.add('hidden');
     document.getElementById('dataInfo').textContent = `{{ file.row_count }} rows × {{ preview_data.columns|length }} columns`;
     document.getElementById('paginationText').textContent = 'Showing first 100 of {{ preview_data.total_rows }} rows';
-    document.getElementById('rowCount').textContent = 'Showing {{ [preview_data.displayed_rows, 100]|min }} of {{ preview_data.total_rows }} rows';
+    document.getElementById('currentRows').textContent = '100';
     isQueryResult = false;
 }
 
