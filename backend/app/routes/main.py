@@ -1,7 +1,3 @@
-"""
-Main Routes - Dashboard, File Upload, File Management
-FIXED: Returns JSON for AJAX requests
-"""
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify, send_file
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
@@ -9,6 +5,8 @@ from ..models.user import db, UploadedFile
 from ..utils.file_processor import process_uploaded_file
 from ..utils.db_utils import get_table_preview, get_table_schema, execute_query, drop_table
 import os
+import csv
+import io
 
 bp = Blueprint('main', __name__)
 
@@ -17,6 +15,18 @@ ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
 def allowed_file(filename):
     """Check if file extension is allowed"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+@bp.route('/')
+def index():
+    """
+    Homepage - Landing page with Sign In / Sign Up
+    If user is logged in, redirect to dashboard
+    """
+    if current_user.is_authenticated:
+        return redirect(url_for('main.dashboard'))
+    
+    return render_template('index.html')
 
 
 @bp.route('/dashboard')
@@ -51,33 +61,19 @@ def dashboard():
 def upload_file():
     """Handle file upload - ALWAYS returns JSON for AJAX"""
     try:
-        # Check if file was uploaded
         if 'file' not in request.files:
-            return jsonify({
-                'success': False, 
-                'message': 'No file selected'
-            }), 400
+            return jsonify({'success': False, 'message': 'No file selected'}), 400
         
         file = request.files['file']
         
-        # Check if filename is empty
         if file.filename == '':
-            return jsonify({
-                'success': False, 
-                'message': 'No file selected'
-            }), 400
+            return jsonify({'success': False, 'message': 'No file selected'}), 400
         
-        # Check if file type is allowed
         if not allowed_file(file.filename):
-            return jsonify({
-                'success': False, 
-                'message': 'Only Excel (.xlsx, .xls) and CSV files are allowed'
-            }), 400
+            return jsonify({'success': False, 'message': 'Only Excel (.xlsx, .xls) and CSV files are allowed'}), 400
         
-        # Process the file
         result = process_uploaded_file(file, current_user.id)
         
-        # ALWAYS return JSON (not redirect)
         return jsonify({
             'success': True,
             'message': 'File uploaded successfully!',
@@ -90,11 +86,8 @@ def upload_file():
         })
         
     except Exception as e:
-        print(f"Upload error: {str(e)}")  # Log the error
-        return jsonify({
-            'success': False, 
-            'message': f'Error uploading file: {str(e)}'
-        }), 500
+        print(f"Upload error: {str(e)}")
+        return jsonify({'success': False, 'message': f'Error uploading file: {str(e)}'}), 500
 
 
 @bp.route('/file/<int:file_id>')
@@ -102,16 +95,8 @@ def upload_file():
 def view_file(file_id):
     """View uploaded file in spreadsheet interface"""
     try:
-        # Get file from database
-        file_record = UploadedFile.query.filter_by(
-            id=file_id,
-            user_id=current_user.id
-        ).first_or_404()
-        
-        # Get table schema
+        file_record = UploadedFile.query.filter_by(id=file_id, user_id=current_user.id).first_or_404()
         schema = get_table_schema(file_record.table_name)
-        
-        # Get preview data (first 100 rows)
         preview_data = get_table_preview(file_record.table_name, limit=100)
         
         return render_template('spreadsheet.html',
@@ -128,31 +113,39 @@ def view_file(file_id):
 @bp.route('/api/file/<int:file_id>/data')
 @login_required
 def get_file_data(file_id):
-    """API endpoint to get file data (for AJAX loading)"""
+    """
+    API endpoint to get file data with pagination
+    NEW: Added for "Load More" functionality
+    """
     try:
-        # Get file from database
+        # Verify file belongs to user
         file_record = UploadedFile.query.filter_by(
             id=file_id,
             user_id=current_user.id
         ).first_or_404()
         
-        # Get pagination parameters
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 100, type=int)
+        # Get pagination parameters from URL
+        offset = request.args.get('offset', 0, type=int)
+        limit = request.args.get('limit', 100, type=int)
         
-        # Get data
-        offset = (page - 1) * per_page
-        data = get_table_preview(file_record.table_name, limit=per_page, offset=offset)
+        # Limit maximum rows per request (prevent overload)
+        limit = min(limit, 5000)
+        
+        # Get data from database
+        data = get_table_preview(file_record.table_name, limit=limit, offset=offset)
         
         return jsonify({
             'success': True,
             'data': data,
-            'page': page,
-            'per_page': per_page
+            'offset': offset,
+            'limit': limit,
+            'rows_returned': len(data['rows'])
         })
+        
     except Exception as e:
+        print(f"Get data error: {str(e)}")
         return jsonify({
-            'success': False, 
+            'success': False,
             'message': str(e)
         }), 500
 
@@ -162,53 +155,67 @@ def get_file_data(file_id):
 def delete_file(file_id):
     """Delete uploaded file"""
     try:
-        file_record = UploadedFile.query.filter_by(
-            id=file_id,
-            user_id=current_user.id
-        ).first_or_404()
+        file_record = UploadedFile.query.filter_by(id=file_id, user_id=current_user.id).first_or_404()
         
-        # Delete physical file
         if os.path.exists(file_record.file_path):
             os.remove(file_record.file_path)
         
-        # Drop database table
         drop_table(file_record.table_name)
-        
-        # Delete record from database
         db.session.delete(file_record)
         db.session.commit()
         
-        return jsonify({
-            'success': True, 
-            'message': 'File deleted successfully'
-        })
-        
+        return jsonify({'success': True, 'message': 'File deleted successfully'})
     except Exception as e:
-        return jsonify({
-            'success': False, 
-            'message': str(e)
-        }), 500
-
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @bp.route('/file/<int:file_id>/download')
 @login_required
 def download_file(file_id):
-    """Download original uploaded file"""
     try:
         file_record = UploadedFile.query.filter_by(
             id=file_id,
             user_id=current_user.id
         ).first_or_404()
-        
-        if os.path.exists(file_record.file_path):
+
+        # Always resolve to an absolute path so send_file works correctly
+        abs_path = os.path.abspath(file_record.file_path)
+        print(f"[DOWNLOAD] Resolved path: {abs_path}")
+
+        if os.path.exists(abs_path):
             return send_file(
-                file_record.file_path,
+                abs_path,
                 as_attachment=True,
                 download_name=file_record.original_filename
             )
-        else:
-            flash('File not found', 'error')
+
+        # Fallback: regenerate CSV from the database table
+        print("[DOWNLOAD] File missing on disk — regenerating from DB")
+        import csv, io
+
+        data = get_table_preview(file_record.table_name, limit=100_000)
+
+        if not data or not data.get('columns'):
+            flash('File data could not be found.', 'error')
             return redirect(url_for('main.dashboard'))
+
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(data['columns'])
+        writer.writerows(data['rows'])
+        buf.seek(0)
+
+        base_name = os.path.splitext(file_record.original_filename)[0]
+
+        return send_file(
+            io.BytesIO(buf.getvalue().encode('utf-8')),
+            as_attachment=True,
+            download_name=base_name + '.csv',
+            mimetype='text/csv'
+        )
+
     except Exception as e:
+        import traceback
+        print(f"[DOWNLOAD] Error: {e}")
+        traceback.print_exc()
         flash(f'Error downloading file: {str(e)}', 'error')
         return redirect(url_for('main.dashboard'))

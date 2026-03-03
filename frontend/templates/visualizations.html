@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+{% block title %}Visualizations - AuroraDB{% endblock %}
+
+{% block extra_head %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+    body { font-family: 'Inter', sans-serif; }
+    .material-symbols-outlined {
+        font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="bg-white text-slate-900 min-h-screen">
+    <!-- Header -->
+    <header class="border-b border-slate-100 bg-white sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-6">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                        <span class="material-symbols-outlined text-white text-xl">database</span>
+                    </div>
+                    <span class="font-bold text-xl tracking-tight text-slate-900">AuroraDB</span>
+                </div>
+                <nav class="flex items-center gap-6 text-sm font-medium">
+                    <a href="{{ url_for('main.dashboard') }}" class="text-slate-600 hover:text-primary transition-colors">Dashboard</a>
+                    <a href="#" class="text-primary font-semibold">Visualizations</a>
+                </nav>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-xs font-bold text-white">
+                    {{ current_user.name[0] }}{{ current_user.name.split()[1][0] if current_user.name.split()|length > 1 else '' }}
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-6 py-12">
+        <!-- Page Header -->
+        <div class="mb-12">
+            <h1 class="text-4xl font-bold tracking-tight text-slate-900">Smart Visualizations Gallery</h1>
+            <p class="text-slate-500 mt-2 text-lg">Automated data summaries and visual insights for your uploaded files.</p>
+        </div>
+
+        <!-- Discovery Cards -->
+        <section class="mb-20">
+            <div class="flex items-center justify-between mb-8">
+                <h2 class="text-2xl font-bold text-slate-900">Discovery Cards</h2>
+                <button class="text-sm font-semibold text-primary hover:text-teal-700 transition-colors">View all</button>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                {% for chart in discovery_charts %}
+                <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 group hover:shadow-xl hover:border-primary/20 transition-all cursor-pointer"
+                     onclick="scrollToChart('{{ chart.id }}')">
+                    <div class="w-12 h-12 rounded-xl bg-teal-50 flex items-center justify-center mb-6">
+                        <span class="material-symbols-outlined text-primary text-2xl">{{ chart.icon }}</span>
+                    </div>
+                    <h3 class="font-bold text-xl mb-1 group-hover:text-primary transition-colors">{{ chart.title }}</h3>
+                    <p class="text-slate-400 text-sm mb-10 font-medium">{{ chart.type }}</p>
+                    <div class="relative h-44 bg-slate-50 rounded-xl flex items-center justify-center overflow-hidden">
+                        <canvas id="preview-{{ chart.id }}" class="max-w-full max-h-full"></canvas>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- Detailed Reports -->
+        <section class="space-y-16">
+            <h2 class="text-2xl font-bold text-slate-900">Detailed Reports</h2>
+            
+            {% for report in detailed_reports %}
+            <div class="space-y-6" id="{{ report.id }}">
+                <h3 class="font-bold text-slate-500 uppercase tracking-widest text-xs">FILE {{ loop.index }}: {{ report.category }}</h3>
+                
+                <div class="bg-white p-10 rounded-2xl shadow-sm border border-slate-100">
+                    <!-- Chart Header -->
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-10">
+                        <h4 class="text-2xl font-bold text-slate-900">{{ report.title }}</h4>
+                        <div class="flex gap-2">
+                            <button onclick="showChart('{{ report.id }}')" 
+                                    class="chart-toggle-{{ report.id }} px-4 py-2 rounded-lg text-xs font-bold bg-teal-50 text-primary border border-teal-100">
+                                Bar Chart
+                            </button>
+                            <button onclick="showTable('{{ report.id }}')" 
+                                    class="table-toggle-{{ report.id }} px-4 py-2 rounded-lg text-xs font-bold bg-slate-50 text-slate-500 border border-slate-200">
+                                Data Table
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Chart View -->
+                    <div id="chart-{{ report.id }}" class="chart-view">
+                        <div class="bg-slate-50 p-10 rounded-2xl mb-8">
+                            <canvas id="canvas-{{ report.id }}" class="max-w-full" style="max-height: 400px;"></canvas>
+                        </div>
+                    </div>
+                    
+                    <!-- Table View (Hidden by default) -->
+                    <div id="table-{{ report.id }}" class="table-view hidden">
+                        <div class="bg-slate-50 p-6 rounded-2xl mb-8 overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead>
+                                    <tr class="border-b border-slate-200">
+                                        <th class="text-left py-3 px-4 font-semibold text-slate-700">Label</th>
+                                        <th class="text-right py-3 px-4 font-semibold text-slate-700">Value</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for item in report.data %}
+                                    <tr class="border-b border-slate-100">
+                                        <td class="py-3 px-4 text-slate-600">{{ item.label }}</td>
+                                        <td class="py-3 px-4 text-right font-semibold text-slate-900">{{ item.value }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- AI Insight -->
+                    <div class="bg-teal-50 border border-teal-100 p-6 rounded-2xl flex items-start gap-4">
+                        <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+                            <span class="material-symbols-outlined text-white text-lg">lightbulb</span>
+                        </div>
+                        <div>
+                            <p class="text-xs font-bold text-primary mb-1">AI Insight</p>
+                            <p class="text-slate-700 text-xs leading-relaxed">{{ report.insight }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </section>
+    </main>
+</div>
+
+<script>
+// Chart data from backend
+const chartData = {{ chart_data|tojson }};
+
+// Initialize all charts
+document.addEventListener('DOMContentLoaded', function() {
+    // Discovery card previews
+    {% for chart in discovery_charts %}
+    createPreviewChart('preview-{{ chart.id }}', {{ chart.preview_data|tojson }});
+    {% endfor %}
+    
+    // Detailed report charts
+    {% for report in detailed_reports %}
+    createDetailedChart('canvas-{{ report.id }}', {{ report.chart_data|tojson }});
+    {% endfor %}
+});
+
+function createPreviewChart(canvasId, data) {
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+    
+    new Chart(ctx, {
+        type: data.type,
+        data: {
+            labels: data.labels,
+            datasets: [{
+                data: data.values,
+                backgroundColor: data.colors,
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: { legend: { display: false } },
+            scales: data.type === 'bar' ? {
+                y: { display: false },
+                x: { display: false }
+            } : {}
+        }
+    });
+}
+
+function createDetailedChart(canvasId, data) {
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+    
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.labels,
+            datasets: [{
+                data: data.values,
+                backgroundColor: data.colors,
+                borderRadius: 8,
+                borderSkipped: false
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.dataset.label + ': ' + context.parsed.y.toLocaleString();
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { display: false },
+                    ticks: {
+                        callback: function(value) {
+                            return value >= 1000 ? (value/1000) + 'K' : value;
+                        }
+                    }
+                },
+                x: {
+                    grid: { display: false }
+                }
+            }
+        }
+    });
+}
+
+function showChart(reportId) {
+    document.getElementById('chart-' + reportId).classList.remove('hidden');
+    document.getElementById('table-' + reportId).classList.add('hidden');
+    document.querySelector('.chart-toggle-' + reportId).className = 'chart-toggle-' + reportId + ' px-4 py-2 rounded-lg text-xs font-bold bg-teal-50 text-primary border border-teal-100';
+    document.querySelector('.table-toggle-' + reportId).className = 'table-toggle-' + reportId + ' px-4 py-2 rounded-lg text-xs font-bold bg-slate-50 text-slate-500 border border-slate-200';
+}
+
+function showTable(reportId) {
+    document.getElementById('chart-' + reportId).classList.add('hidden');
+    document.getElementById('table-' + reportId).classList.remove('hidden');
+    document.querySelector('.chart-toggle-' + reportId).className = 'chart-toggle-' + reportId + ' px-4 py-2 rounded-lg text-xs font-bold bg-slate-50 text-slate-500 border border-slate-200';
+    document.querySelector('.table-toggle-' + reportId).className = 'table-toggle-' + reportId + ' px-4 py-2 rounded-lg text-xs font-bold bg-teal-50 text-primary border border-teal-100';
+}
+
+function scrollToChart(chartId) {
+    document.getElementById(chartId).scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+</script>
+{% endblock %}

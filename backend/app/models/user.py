@@ -1,11 +1,11 @@
 """
-Database Models for AuroraDB
-Defines User, UploadedFile, and QueryHistory tables
+Database Models - User, UploadedFile, QueryHistory
+FIXED: Uses existing db instance from __init__.py
 """
-from datetime import datetime
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
-from .. import db
+from datetime import datetime
+from .. import db  # Import db from app package
 
 
 class User(UserMixin, db.Model):
@@ -23,27 +23,19 @@ class User(UserMixin, db.Model):
     query_history = db.relationship('QueryHistory', backref='user', lazy=True, cascade='all, delete-orphan')
     
     def set_password(self, password):
-        """Hash and store password"""
+        """Hash and set password"""
         self.password_hash = generate_password_hash(password)
     
     def check_password(self, password):
         """Verify password"""
         return check_password_hash(self.password_hash, password)
     
-    def get_file_count(self):
-        """Get number of uploaded files"""
-        return len(self.uploaded_files)
-    
-    def get_query_count(self):
-        """Get number of queries made"""
-        return len(self.query_history)
-    
     def __repr__(self):
         return f'<User {self.email}>'
 
 
 class UploadedFile(db.Model):
-    """Uploaded Excel/CSV file metadata"""
+    """Uploaded file metadata"""
     __tablename__ = 'uploaded_files'
     
     id = db.Column(db.Integer, primary_key=True)
@@ -51,18 +43,21 @@ class UploadedFile(db.Model):
     filename = db.Column(db.String(255), nullable=False)
     original_filename = db.Column(db.String(255), nullable=False)
     file_path = db.Column(db.String(500), nullable=False)
-    table_name = db.Column(db.String(100), nullable=False, index=True)
+    table_name = db.Column(db.String(100), nullable=False)
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
     file_size = db.Column(db.Integer)
     row_count = db.Column(db.Integer)
     column_count = db.Column(db.Integer)
     
+    # Relationship
+    queries = db.relationship('QueryHistory', backref='file', lazy=True, cascade='all, delete-orphan')
+    
     def __repr__(self):
-        return f'<File {self.original_filename}>'
+        return f'<UploadedFile {self.original_filename}>'
 
 
 class QueryHistory(db.Model):
-    """User query history"""
+    """AI query history"""
     __tablename__ = 'query_history'
     
     id = db.Column(db.Integer, primary_key=True)
@@ -72,7 +67,7 @@ class QueryHistory(db.Model):
     sql_query = db.Column(db.Text)
     result_count = db.Column(db.Integer)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    execution_time = db.Column(db.Float)  # in seconds
+    execution_time = db.Column(db.Float)
     
     def __repr__(self):
-        return f'<Query {self.id}: {self.question[:30]}...>'
+        return f'<QueryHistory {self.id}: {self.question[:50]}>'

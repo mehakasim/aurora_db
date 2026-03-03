@@ -1,343 +1,636 @@
-{% extends "base.html" %} {% block title %}{{ file.original_filename }} -
-AuroraDB{% endblock %} {% block extra_head %}
-<link
-  href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-  rel="stylesheet"
-/>
-<link
-  href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined"
-  rel="stylesheet"
-/>
+{% extends "base.html" %}
+{% block title %}{{ file.original_filename }} - AuroraDB{% endblock %}
+
+{% block extra_head %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet"/>
 <script>
-  tailwind.config = {
-    theme: {
-      extend: {
-        colors: { primary: "#12a594" },
-        fontFamily: { display: ["Inter", "sans-serif"] },
-      },
-    },
-  };
+    tailwind.config = {
+        theme: {
+            extend: {
+                colors: { primary: "#12a594" },
+                fontFamily: { display: ["Inter", "sans-serif"] },
+            },
+        },
+    };
 </script>
 <style>
-  body {
-    font-family: "Inter", sans-serif;
-  }
-
-  /* Simple table styling - NO GRID */
-  .table-container {
-    overflow: auto;
-    max-height: calc(100vh - 180px);
-    background: white;
-  }
-
-  table {
-    border-collapse: collapse;
-    width: max-content;
-    min-width: 100%;
-    font-size: 13px;
-  }
-
-  th,
-  td {
-    border: 1px solid #e5e7eb;
-    padding: 6px 12px;
-    white-space: nowrap;
-    text-align: left;
-  }
-
-  th {
-    background-color: #f3f4f6;
-    color: #4b5563;
-    font-weight: 600;
-    position: sticky;
-    top: 0;
-    z-index: 20;
-  }
-
-  .row-num {
-    background-color: #f9fafb;
-    color: #6b7280;
-    font-weight: 500;
-    text-align: center;
-    position: sticky;
-    left: 0;
-    z-index: 10;
-  }
-
-  td {
-    max-width: 300px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+    body { font-family: 'Inter', sans-serif; }
+    .table-container {
+        overflow: auto;
+        max-height: calc(100vh - 180px);
+        background: white;
+    }
+    table {
+        border-collapse: collapse;
+        width: max-content;
+        min-width: 100%;
+        font-size: 13px;
+    }
+    th, td {
+        border: 1px solid #e5e7eb;
+        padding: 6px 12px;
+        white-space: nowrap;
+        text-align: left;
+    }
+    th {
+        background-color: #f3f4f6;
+        color: #4b5563;
+        font-weight: 600;
+        position: sticky;
+        top: 0;
+        z-index: 20;
+    }
+    .row-num {
+        background-color: #f9fafb;
+        color: #6b7280;
+        font-weight: 500;
+        text-align: center;
+        position: sticky;
+        left: 0;
+        z-index: 10;
+    }
+    td {
+        max-width: 300px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .query-result-row {
+        background-color: #ecfdf5 !important;
+    }
+    
+    /* Voice Animation */
+    @keyframes pulse-ring {
+        0% { transform: scale(0.95); opacity: 1; }
+        50% { transform: scale(1.05); opacity: 0.7; }
+        100% { transform: scale(0.95); opacity: 1; }
+    }
+    .recording {
+        animation: pulse-ring 1.5s ease-in-out infinite;
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    }
+    .voice-wave {
+        display: inline-flex;
+        gap: 3px;
+        align-items: center;
+        height: 20px;
+    }
+    .voice-wave span {
+        width: 3px;
+        background: white;
+        animation: wave 1s ease-in-out infinite;
+        border-radius: 3px;
+    }
+    .voice-wave span:nth-child(1) { animation-delay: 0s; }
+    .voice-wave span:nth-child(2) { animation-delay: 0.1s; }
+    .voice-wave span:nth-child(3) { animation-delay: 0.2s; }
+    .voice-wave span:nth-child(4) { animation-delay: 0.3s; }
+    @keyframes wave {
+        0%, 100% { height: 8px; }
+        50% { height: 16px; }
+    }
 </style>
-{% endblock %} {% block content %}
+{% endblock %}
+
+{% block content %}
 <div class="bg-gray-50 h-screen flex flex-col overflow-hidden">
-  <!-- Header -->
-  <header
-    class="h-12 border-b border-gray-200 flex items-center justify-between px-4 bg-white"
-  >
-    <div class="flex items-center gap-2">
-      <a
-        href="{{ url_for('main.dashboard') }}"
-        class="w-8 h-8 bg-primary rounded flex items-center justify-center text-white hover:opacity-90"
-      >
-        <span class="material-icons-outlined text-xl">arrow_back</span>
-      </a>
-      <div>
+    <!-- Header -->
+    <header class="h-12 border-b border-gray-200 flex items-center justify-between px-4 bg-white">
         <div class="flex items-center gap-2">
-          <span class="text-sm font-medium text-gray-500"
-            >{{ current_user.name }} /</span
-          >
-          <span class="text-sm font-semibold"
-            >{{ file.original_filename }}</span
-          >
-        </div>
-        <div class="text-xs text-gray-500">
-          {{ file.row_count }} rows × {{ preview_data.columns|length }} columns
-        </div>
-      </div>
-    </div>
-    <div class="flex gap-2">
-      <a
-        href="{{ url_for('main.download_file', file_id=file.id) }}"
-        class="bg-primary text-white px-4 py-1.5 rounded text-sm font-semibold hover:opacity-90"
-      >
-        <span class="material-icons-outlined text-sm">download</span>
-        Download
-      </a>
-      <a
-        href="{{ url_for('main.dashboard') }}"
-        class="bg-gray-200 text-gray-700 px-4 py-1.5 rounded text-sm font-semibold hover:bg-gray-300"
-      >
-        Close
-      </a>
-    </div>
-  </header>
-
-  <!-- Toolbar -->
-  <div
-    class="h-10 border-b border-gray-200 bg-white flex items-center px-4 gap-2 text-xs text-gray-600"
-  >
-    <button
-      onclick="window.location.reload()"
-      class="p-1 hover:bg-gray-100 rounded"
-    >
-      <span class="material-icons-outlined text-lg">refresh</span>
-    </button>
-    <span class="border-l pl-2">
-      Showing {{ [preview_data.displayed_rows, 100]|min }} of {{
-      preview_data.total_rows }} rows
-    </span>
-  </div>
-
-  <!-- Main: Chat Left + Table Right -->
-  <main class="flex flex-1 overflow-hidden">
-    <!-- Chat Sidebar (400px) -->
-    <aside class="w-[400px] flex flex-col border-r border-gray-200 bg-white">
-      <div class="p-4 border-b flex justify-between items-center">
-        <h2 class="text-lg font-bold">Sheet chat</h2>
-        <button
-          onclick="toggleChat()"
-          class="p-1.5 hover:bg-gray-100 rounded-full"
-        >
-          <span class="material-icons-outlined">close</span>
-        </button>
-      </div>
-
-      <div id="chatMessages" class="flex-1 overflow-y-auto p-6 flex flex-col">
-        <div class="text-center mb-6">
-          <div class="mb-4 mt-3 text-2xl font-bold text-gray-900">
-            What would you like to do?
-          </div>
-          <p class="text-sm text-gray-500 mb-4">
-            Ask questions about your data in natural language
-          </p>
-
-          <!-- Sample Questions -->
-          <div class="space-y-2">
-            <button
-              onclick="setQuestion('Show me the first 10 rows')"
-              class="w-full text-left px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg text-sm text-gray-700 transition-colors"
-            >
-              Show me the first 10 rows
-            </button>
-            <button
-              onclick="setQuestion('What are the column names?')"
-              class="w-full text-left px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg text-sm text-gray-700 transition-colors"
-            >
-              What are the column names?
-            </button>
-            <button
-              onclick="setQuestion('How many rows are in this dataset?')"
-              class="w-full text-left px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg text-sm text-gray-700 transition-colors"
-            >
-              How many rows are in this dataset?
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div class="p-4 space-y-3">
-        <div class="relative">
-          <div
-            class="bg-gray-50 rounded-xl p-3 border border-gray-200 focus-within:border-primary transition-colors"
-          >
-            <input
-              type="text"
-              id="queryInput"
-              placeholder="Ask a question..."
-              class="w-full bg-transparent outline-none text-sm placeholder-gray-500"
-              onkeypress="if (event.key === 'Enter') askQuestion();"
-            />
-            <div class="flex items-center justify-between mt-2">
-              <div class="flex items-center gap-1">
-                <button
-                  class="p-1.5 text-gray-500 hover:text-primary rounded-md"
-                >
-                  <span class="material-icons-outlined text-xl text-gray-400"
-                    >attach_file</span
-                  >
-                </button>
-                <button
-                  class="p-1.5 text-gray-500 hover:text-primary rounded-md"
-                >
-                  <span class="material-icons-outlined text-xl text-gray-400"
-                    >mic</span
-                  >
-                </button>
-              </div>
-              <button
-                onclick="askQuestion()"
-                class="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white shadow-sm hover:opacity-90"
-              >
-                <span class="material-icons-outlined text-lg"
-                  >arrow_upward</span
-                >
-              </button>
+            <a href="{{ url_for('main.dashboard') }}" class="w-8 h-8 bg-primary rounded flex items-center justify-center text-white hover:opacity-90">
+                <span class="material-icons-outlined text-xl">arrow_back</span>
+            </a>
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium text-gray-500">{{ current_user.name }} /</span>
+                    <span class="text-sm font-semibold">{{ file.original_filename }}</span>
+                </div>
+                <div class="text-xs text-gray-500">
+                    <span id="dataInfo">{{ file.row_count }} rows × {{ preview_data.columns|length }} columns</span>
+                </div>
             </div>
-          </div>
         </div>
-      </div>
-    </aside>
+        <div class="flex gap-2">
+            <button onclick="resetView()" class="bg-gray-200 text-gray-700 px-4 py-1.5 rounded text-sm font-semibold hover:bg-gray-300">
+                Reset View
+            </button>
+            <a href="{{ url_for('visualizations.view_file_charts', file_id=file.id) }}" 
+               class="bg-purple-500 text-white px-4 py-1.5 rounded text-sm font-semibold hover:bg-purple-600 flex items-center gap-2">
+                <span class="material-icons-outlined text-sm">bar_chart</span>
+                Charts
+            </a>
+            <a href="{{ url_for('main.download_file', file_id=file.id) }}" 
+               class="bg-primary text-white px-4 py-1.5 rounded text-sm font-semibold hover:opacity-90 flex items-center gap-1">
+                <span class="material-icons-outlined text-sm">download</span>
+                Download
+            </a>
+            <a href="{{ url_for('main.dashboard') }}" 
+               class="bg-gray-200 text-gray-700 px-4 py-1.5 rounded text-sm font-semibold hover:bg-gray-300">
+                Close
+            </a>
+        </div>
+    </header>
 
-    <!-- Spreadsheet Table (Flex 1) -->
-    <div class="flex-1 flex flex-col overflow-hidden">
-      <div class="table-container flex-1">
-        <table>
-          <thead>
-            <tr>
-              <th class="row-num">#</th>
-              {% for column in preview_data.columns %}
-              <th>{{ column }}</th>
-              {% endfor %}
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in preview_data.rows[:100] %}
-            <tr>
-              <td class="row-num">{{ loop.index }}</td>
-              {% for cell in row %}
-              <td>{{ cell if cell is not none else '' }}</td>
-              {% endfor %}
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-
-      {% if preview_data.total_rows > 100 %}
-      <div class="border-t p-3 bg-gray-50 text-center">
-        <p class="text-sm text-gray-600 mb-2">
-          Showing first 100 rows of {{ preview_data.total_rows }}
-        </p>
-        <button
-          onclick="
-            alert('Pagination coming soon! Use Download to get all data.')
-          "
-          class="px-4 py-2 bg-primary text-white rounded text-sm hover:opacity-90"
-        >
-          Load Next 100 Rows
+    <!-- Toolbar -->
+    <div class="h-10 border-b border-gray-200 bg-white flex items-center px-4 gap-2 text-xs text-gray-600">
+        <button onclick="window.location.reload()" class="p-1 hover:bg-gray-100 rounded">
+            <span class="material-icons-outlined text-lg">refresh</span>
         </button>
-      </div>
-      {% endif %}
+        <sspan class="border-l pl-2" id="rowCount">
+    {% set displayed = preview_data.rows|length %}
+    {% if preview_data.total_rows <= displayed %}
+        Showing all {{ preview_data.total_rows }} rows
+    {% else %}
+        Showing <span id="currentRows">{{ displayed }}</span> of {{ preview_data.total_rows }} rows
+    {% endif %}
+</span>
+        <span id="queryIndicator" class="hidden ml-2 px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium">
+            Query Results
+        </span>
     </div>
-  </main>
 
-  <!-- Footer -->
-  <footer
-    class="h-8 border-t bg-gray-50 flex items-center px-4 justify-between text-xs"
-  >
-    <span class="text-primary font-medium">{{ file.table_name }}</span>
-    <div class="flex items-center gap-2">
-      <span class="w-2 h-2 rounded-full bg-green-500"></span>
-      <span class="text-gray-500"
-        >{{ [preview_data.displayed_rows, 100]|min }} rows loaded</span
-      >
-    </div>
-  </footer>
+    <!-- Main: Chat Left + Table Right -->
+    <main class="flex flex-1 overflow-hidden">
+        <!-- Chat Sidebar -->
+        <aside class="w-[400px] flex flex-col border-r border-gray-200 bg-white">
+            <div class="p-4 border-b flex justify-between items-center">
+                <h2 class="text-lg font-bold">AI Assistant</h2>
+                <button onclick="toggleChat()" class="p-1.5 hover:bg-gray-100 rounded-full">
+                    <span class="material-icons-outlined">close</span>
+                </button>
+            </div>
+            
+            <div id="chatMessages" class="flex-1 overflow-y-auto p-6">
+                <div class="text-center mb-6" id="welcomeMessage">
+                    <h3 class="text-xl font-bold mb-2">Ask about your data</h3>
+                    <p class="text-sm text-gray-500 mb-4">Type or speak your questions</p>
+                    <div class="space-y-2">
+                        <button onclick="setQuestion('Show first 10 rows')" 
+                                class="w-full text-left px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded text-sm">
+                            Show first 10 rows
+                        </button>
+                        <button onclick="setQuestion('What columns exist?')" 
+                                class="w-full text-left px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded text-sm">
+                            What are the columns?
+                        </button>
+                        <button onclick="window.location.href='{{ url_for('visualizations.view_file_charts', file_id=file.id) }}'" 
+                                class="w-full text-left px-3 py-2 bg-purple-50 hover:bg-purple-100 rounded text-sm border border-purple-200">
+                            <div class="flex items-center gap-2">
+                                <span class="material-icons-outlined text-purple-600 text-lg">bar_chart</span>
+                                <span class="font-medium text-purple-700">View Charts & Insights</span>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Input with Voice -->
+            <div class="p-4 border-t">
+                <div class="bg-gray-50 rounded-xl p-3 border focus-within:border-primary transition-colors">
+                    <input type="text" id="queryInput" placeholder="Ask about your data or click mic to speak..."
+                           class="w-full bg-transparent outline-none text-sm"
+                           onkeypress="if(event.key==='Enter') askQuestion()">
+                    <div class="flex justify-between items-center mt-2">
+                        <!-- Voice Button -->
+                        <button id="voiceButton" onclick="toggleVoiceInput()" 
+                                class="p-1.5 text-gray-500 hover:text-primary rounded-md transition-colors"
+                                title="Voice input">
+                            <span class="material-icons-outlined text-xl">mic</span>
+                        </button>
+                        
+                        <!-- Recording Indicator -->
+                        <div id="recordingIndicator" class="hidden flex items-center gap-2 text-xs text-red-600">
+                            <div class="voice-wave">
+                                <span></span><span></span><span></span><span></span>
+                            </div>
+                            <span class="font-medium">Listening...</span>
+                        </div>
+                        
+                        <!-- Send Button -->
+                        <button onclick="askQuestion()" 
+                                class="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white hover:opacity-90">
+                            <span class="material-icons-outlined text-lg">arrow_upward</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Voice Status -->
+                <div id="voiceStatus" class="hidden mt-2 text-xs text-center">
+                    <span class="text-gray-500"></span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Spreadsheet Table -->
+        <div class="flex-1 flex flex-col overflow-hidden">
+            <div class="table-container flex-1" id="tableContainer">
+                <table id="dataTable">
+                    <thead>
+                        <tr>
+                            <th class="row-num">#</th>
+                            {% for column in preview_data.columns %}
+                            <th>{{ column }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        {% for row in preview_data.rows[:100] %}
+                        <tr>
+                            <td class="row-num">{{ loop.index }}</td>
+                            {% for cell in row %}
+                            <td>{{ cell if cell is not none else '' }}</td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Pagination Controls -->
+            <div id="pagination" class="border-t p-3 bg-gray-50 flex items-center justify-between">
+                <p class="text-sm text-gray-600">
+    {% set displayed = preview_data.rows|length %}
+    <span id="paginationText">
+        {% if preview_data.total_rows <= displayed %}
+            Showing all {{ preview_data.total_rows }} rows
+        {% else %}
+            Showing first {{ displayed }} of {{ preview_data.total_rows }} rows
+        {% endif %}
+    </span>
+</p>
+
+                {% if preview_data.total_rows > 100 %}
+                <div class="flex gap-2">
+                    <button id="loadMoreBtn" onclick="loadMoreRows()" 
+                            class="px-4 py-2 bg-primary text-white rounded text-sm font-semibold hover:opacity-90">
+                        Load Next 100 Rows
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="h-8 border-t bg-gray-50 flex items-center px-4 justify-between text-xs">
+        <span class="text-primary font-medium">{{ file.table_name }}</span>
+        <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-green-500"></span>
+            <span class="text-gray-500" id="statusText">Ready</span>
+        </div>
+    </footer>
 </div>
 
-<div
-  id="loadingOverlay"
-  class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
->
-  <div class="bg-white rounded-xl p-8">
-    <div
-      class="animate-spin rounded-full h-12 w-12 border-b-4 border-primary mx-auto mb-4"
-    ></div>
-    <p class="text-sm">Processing...</p>
-  </div>
+<div id="loadingOverlay" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-8 text-center">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-primary mx-auto mb-4"></div>
+        <p class="text-sm font-medium" id="loadingText">Processing...</p>
+    </div>
 </div>
-{% endblock %} {% block scripts %}
+{% endblock %}
+
+{% block scripts %}
 <script>
-  const fileId = {{ file.id }};
+const fileId = {{ file.id }};
+const tableName = "{{ file.table_name }}";
+let originalColumns = {{ preview_data.columns|tojson }};
+let originalRows = {{ preview_data.rows[:100]|tojson }};
+let currentLoadedRows = 100;
+let isQueryResult = false;
 
-  function setQuestion(q) {
-      document.getElementById('queryInput').value = q;
-  }
+// Voice Recognition Setup
+let recognition = null;
+let isRecording = false;
 
-  function askQuestion() {
-      const question = document.getElementById('queryInput').value.trim();
-      if (!question) return;
+if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    
+    // Configuration for accuracy
+    recognition.continuous = true;  // Keep listening
+    recognition.interimResults = true;  // Real-time results
+    recognition.lang = 'en-US';  // Language
+    recognition.maxAlternatives = 1;
+    
+    // Real-time transcription
+    recognition.onresult = function(event) {
+        let interimTranscript = '';
+        let finalTranscript = '';
+        
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+                finalTranscript += transcript + ' ';
+            } else {
+                interimTranscript += transcript;
+            }
+        }
+        
+        // Update input field in real-time
+        const input = document.getElementById('queryInput');
+        if (finalTranscript) {
+            input.value = (input.value + ' ' + finalTranscript).trim();
+        }
+        
+        // Show interim results
+        if (interimTranscript) {
+            document.getElementById('voiceStatus').innerHTML = 
+                `<span class="text-primary italic">"${interimTranscript}"</span>`;
+        }
+    };
+    
+    recognition.onend = function() {
+        if (isRecording) {
+            // Restart if still recording
+            recognition.start();
+        } else {
+            updateVoiceUI(false);
+        }
+    };
+    
+    recognition.onerror = function(event) {
+        console.error('Speech recognition error:', event.error);
+        if (event.error === 'no-speech') {
+            // Continue listening
+            return;
+        }
+        stopVoiceInput();
+        showVoiceError(event.error);
+    };
+} else {
+    console.warn('Speech recognition not supported');
+}
 
-      const chatMessages = document.getElementById('chatMessages');
+function toggleVoiceInput() {
+    if (!recognition) {
+        alert('Voice input not supported in this browser. Please use Chrome, Edge, or Safari.');
+        return;
+    }
+    
+    if (isRecording) {
+        stopVoiceInput();
+    } else {
+        startVoiceInput();
+    }
+}
 
-      // User message
-      const userMsg = document.createElement('div');
-      userMsg.className = 'mb-3 p-3 bg-blue-50 rounded-lg';
-      userMsg.innerHTML = `<p class="text-xs font-medium text-blue-900">You</p><p class="text-sm text-blue-800">${question}</p>`;
-      chatMessages.appendChild(userMsg);
-      chatMessages.scrollTop = chatMessages.scrollHeight;
+function startVoiceInput() {
+    try {
+        isRecording = true;
+        recognition.start();
+        updateVoiceUI(true);
+        document.getElementById('statusText').textContent = 'Listening...';
+    } catch (error) {
+        console.error('Error starting recognition:', error);
+    }
+}
 
-      document.getElementById('loadingOverlay').classList.remove('hidden');
+function stopVoiceInput() {
+    isRecording = false;
+    if (recognition) {
+        recognition.stop();
+    }
+    updateVoiceUI(false);
+    document.getElementById('statusText').textContent = 'Ready';
+}
 
-      fetch('/api/query', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ file_id: fileId, question: question })
-      })
-      .then(r => r.json())
-      .then(data => {
-          document.getElementById('loadingOverlay').classList.add('hidden');
-          const aiMsg = document.createElement('div');
-          aiMsg.className = 'mb-3 p-3 bg-green-50 rounded-lg';
-          aiMsg.innerHTML = `<p class="text-xs font-medium text-green-900">AI</p><p class="text-sm text-green-800">${data.answer || 'Feature coming soon!'}</p>`;
-          chatMessages.appendChild(aiMsg);
-          document.getElementById('queryInput').value = '';
-          chatMessages.scrollTop = chatMessages.scrollHeight;
-      })
-      .catch(() => {
-          document.getElementById('loadingOverlay').classList.add('hidden');
-          const errorMsg = document.createElement('div');
-          errorMsg.className = 'mb-3 p-3 bg-yellow-50 rounded-lg';
-          errorMsg.innerHTML = '<p class="text-sm text-yellow-800">AI coming soon! Your data is displayed below.</p>';
-          chatMessages.appendChild(errorMsg);
-          chatMessages.scrollTop = chatMessages.scrollHeight;
-      });
-  }
+function updateVoiceUI(recording) {
+    const voiceButton = document.getElementById('voiceButton');
+    const recordingIndicator = document.getElementById('recordingIndicator');
+    const voiceStatus = document.getElementById('voiceStatus');
+    
+    if (recording) {
+        voiceButton.classList.add('recording');
+        voiceButton.querySelector('span').textContent = 'mic_off';
+        recordingIndicator.classList.remove('hidden');
+        voiceStatus.classList.remove('hidden');
+    } else {
+        voiceButton.classList.remove('recording');
+        voiceButton.querySelector('span').textContent = 'mic';
+        recordingIndicator.classList.add('hidden');
+        voiceStatus.classList.add('hidden');
+        voiceStatus.innerHTML = '';
+    }
+}
 
-  function toggleChat() {
-      document.querySelector('aside').classList.toggle('hidden');
-  }
+function showVoiceError(error) {
+    const voiceStatus = document.getElementById('voiceStatus');
+    voiceStatus.classList.remove('hidden');
+    voiceStatus.innerHTML = `<span class="text-red-600">Error: ${error}</span>`;
+    setTimeout(() => voiceStatus.classList.add('hidden'), 3000);
+}
+
+function setQuestion(q) {
+    document.getElementById('queryInput').value = q;
+}
+
+function askQuestion() {
+    // Stop recording if active
+    if (isRecording) {
+        stopVoiceInput();
+    }
+    
+    const question = document.getElementById('queryInput').value.trim();
+    if (!question) {
+        alert('Please enter a question');
+        return;
+    }
+    
+    const chatMessages = document.getElementById('chatMessages');
+    const welcome = document.getElementById('welcomeMessage');
+    if (welcome) welcome.style.display = 'none';
+    
+    const userMsg = document.createElement('div');
+    userMsg.className = 'mb-3 p-3 bg-blue-50 rounded-lg';
+    userMsg.innerHTML = `<p class="text-xs font-medium text-blue-900">You</p><p class="text-sm text-blue-800">${escapeHtml(question)}</p>`;
+    chatMessages.appendChild(userMsg);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    document.getElementById('loadingOverlay').classList.remove('hidden');
+    document.getElementById('loadingText').textContent = 'Processing your query...';
+    document.getElementById('statusText').textContent = 'Processing query...';
+    
+    fetch('/api/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_id: fileId, question: question })
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('loadingOverlay').classList.add('hidden');
+        document.getElementById('statusText').textContent = 'Ready';
+        
+        if (!data.success) throw new Error(data.message || 'Query failed');
+        
+        const aiMsg = document.createElement('div');
+        aiMsg.className = 'mb-3 p-3 bg-green-50 rounded-lg';
+        aiMsg.innerHTML = `<p class="text-xs font-medium text-green-900">AI</p><p class="text-sm text-green-800">${data.answer}</p>`;
+        chatMessages.appendChild(aiMsg);
+        
+        if (data.result_type === 'table') {
+            updateSpreadsheet(data.data.columns, data.data.rows);
+            document.getElementById('queryIndicator').classList.remove('hidden');
+            document.getElementById('dataInfo').textContent = `${data.data.row_count} results × ${data.data.columns.length} columns`;
+            isQueryResult = true;
+        } else {
+            document.getElementById('queryIndicator').classList.add('hidden');
+        }
+        
+        document.getElementById('queryInput').value = '';
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    })
+    .catch(error => {
+        document.getElementById('loadingOverlay').classList.add('hidden');
+        document.getElementById('statusText').textContent = 'Error';
+        
+        const errorMsg = document.createElement('div');
+        errorMsg.className = 'mb-3 p-3 bg-red-50 rounded-lg';
+        errorMsg.innerHTML = `<p class="text-xs font-medium text-red-900">Error</p><p class="text-sm text-red-800">${escapeHtml(error.message)}</p>`;
+        chatMessages.appendChild(errorMsg);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    });
+}
+
+// Pagination functions
+function loadMoreRows() {
+    const offset = currentLoadedRows;
+    const limit = 100;
+    
+    document.getElementById('loadingOverlay').classList.remove('hidden');
+    document.getElementById('loadingText').textContent = 'Loading more rows...';
+    
+    fetch(`/api/file/${fileId}/data?offset=${offset}&limit=${limit}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && data.data.rows.length > 0) {
+                appendRows(data.data.rows);
+                currentLoadedRows += data.data.rows.length;
+                document.getElementById('currentRows').textContent = currentLoadedRows;
+                document.getElementById('paginationText').textContent = 
+                    `Showing ${currentLoadedRows} of {{ preview_data.total_rows }} rows`;
+                
+                if (currentLoadedRows >= {{ preview_data.total_rows }}) {
+                    document.getElementById('loadMoreBtn').disabled = true;
+                    document.getElementById('loadMoreBtn').textContent = 'All rows loaded';
+                }
+            }
+            document.getElementById('loadingOverlay').classList.add('hidden');
+        })
+        .catch(error => {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+            alert('Error loading more rows: ' + error);
+        });
+}
+
+function loadAllRows() {
+    if (!confirm('This will load all {{ preview_data.total_rows }} rows. This may take a moment. Continue?')) {
+        return;
+    }
+    
+    document.getElementById('loadingOverlay').classList.remove('hidden');
+    document.getElementById('loadingText').textContent = 'Loading all rows...';
+    
+    fetch(`/api/file/${fileId}/data?offset=100&limit={{ preview_data.total_rows }}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                appendRows(data.data.rows);
+                currentLoadedRows = {{ preview_data.total_rows }};
+                document.getElementById('currentRows').textContent = currentLoadedRows;
+                document.getElementById('paginationText').textContent = 
+                    `Showing all {{ preview_data.total_rows }} rows`;
+                document.getElementById('pagination').innerHTML = 
+                    '<p class="text-sm text-green-600 font-medium">All rows loaded ✓</p>';
+            }
+            document.getElementById('loadingOverlay').classList.add('hidden');
+        })
+        .catch(error => {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+            alert('Error loading rows: ' + error);
+        });
+}
+
+function appendRows(rows) {
+    const tableBody = document.getElementById('tableBody');
+    const startIndex = tableBody.querySelectorAll('tr').length;
+    
+    rows.forEach((row, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td class="row-num">${startIndex + idx + 1}</td>`;
+        row.forEach(cell => {
+            tr.innerHTML += `<td>${cell !== null ? escapeHtml(String(cell)) : ''}</td>`;
+        });
+        tableBody.appendChild(tr);
+    });
+}
+
+function updateSpreadsheet(columns, rows) {
+    const tableBody = document.getElementById('tableBody');
+    const table = document.getElementById('dataTable');
+    
+    const thead = table.querySelector('thead tr');
+    thead.innerHTML = '<th class="row-num">#</th>';
+    columns.forEach(col => {
+        thead.innerHTML += `<th>${escapeHtml(col)}</th>`;
+    });
+    
+    tableBody.innerHTML = '';
+    rows.forEach((row, idx) => {
+        const tr = document.createElement('tr');
+        tr.className = 'query-result-row';
+        tr.innerHTML = `<td class="row-num">${idx + 1}</td>`;
+        row.forEach(cell => {
+            tr.innerHTML += `<td>${cell !== null ? escapeHtml(String(cell)) : ''}</td>`;
+        });
+        tableBody.appendChild(tr);
+    });
+    
+    document.getElementById('paginationText').textContent = `Showing ${rows.length} query results`;
+    document.getElementById('currentRows').textContent = rows.length;
+}
+
+function resetView() {
+    const table = document.getElementById('dataTable');
+    const thead = table.querySelector('thead tr');
+    const totalRows = {{ preview_data.total_rows }};
+const initialRows = {{ preview_data.rows|length }};
+let currentLoadedRows = initialRows;
+    
+    thead.innerHTML = '<th class="row-num">#</th>';
+    originalColumns.forEach(col => {
+        thead.innerHTML += `<th>${escapeHtml(col)}</th>`;
+    });
+    
+    const tableBody = document.getElementById('tableBody');
+    tableBody.innerHTML = '';
+    originalRows.forEach((row, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td class="row-num">${idx + 1}</td>`;
+        row.forEach(cell => {
+            tr.innerHTML += `<td>${cell !== null ? escapeHtml(String(cell)) : ''}</td>`;
+        });
+        tableBody.appendChild(tr);
+    });
+    
+    currentLoadedRows = initialRows;
+    document.getElementById('queryIndicator').classList.add('hidden');
+    document.getElementById('dataInfo').textContent = `{{ file.row_count }} rows × {{ preview_data.columns|length }} columns`;
+    document.getElementById('paginationText').textContent = 
+        totalRows <= initialRows
+            ? `Showing all ${totalRows} rows`
+            : `Showing first ${initialRows} of ${totalRows} rows`;
+    document.getElementById('currentRows').textContent = initialRows;
+    isQueryResult = false;
+}
+
+function toggleChat() {
+    document.querySelector('aside').classList.toggle('hidden');
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 </script>
 {% endblock %}
