@@ -60,7 +60,14 @@ block extra_head %}
 
       <!-- Right: User + Logout -->
       <div class="flex items-center gap-4">
-        <span class="text-sm font-medium leading-none">{{ user.name }}</span>
+        <div class="flex items-center gap-4 slide-in-right">
+          <div
+            class="h-11 w-11 bg-primary rounded-full flex items-center justify-center text-sm font-bold text-white shadow-lg"
+          >
+            {{ current_user.name[0] }}{{ current_user.name.split()[1][0] if
+            current_user.name.split()|length > 1 else '' }}
+          </div>
+        </div>
         <a
           href="{{ url_for('auth.logout') }}"
           class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"

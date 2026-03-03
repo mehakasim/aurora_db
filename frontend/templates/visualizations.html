@@ -2,39 +2,235 @@
 {% block title %}Visualizations - AuroraDB{% endblock %}
 
 {% block extra_head %}
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
-    body { font-family: 'Inter', sans-serif; }
+    body { font-family: 'Inter', sans-serif; background: white; }
+    
     .material-symbols-outlined {
         font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
     }
-    ::-webkit-scrollbar { width: 8px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    
+    /* Animations */
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    @keyframes slideInRight {
+        from {
+            opacity: 0;
+            transform: translateX(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateX(0);
+        }
+    }
+    
+    @keyframes scaleIn {
+        from {
+            opacity: 0;
+            transform: scale(0.9);
+        }
+        to {
+            opacity: 1;
+            transform: scale(1);
+        }
+    }
+    
+    @keyframes shimmer {
+        0% { background-position: -1000px 0; }
+        100% { background-position: 1000px 0; }
+    }
+    
+    .fade-in-up {
+        animation: fadeInUp 0.6s ease-out forwards;
+    }
+    
+    .slide-in-right {
+        animation: slideInRight 0.6s ease-out forwards;
+    }
+    
+    .scale-in {
+        animation: scaleIn 0.4s ease-out forwards;
+    }
+    
+    /* Card hover effects */
+    .discovery-card {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .discovery-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+        transition: left 0.5s;
+    }
+    
+    .discovery-card:hover::before {
+        left: 100%;
+    }
+    
+    .discovery-card:hover {
+        transform: translateY(-8px);
+        box-shadow: 0 20px 40px rgba(13, 148, 136, 0.2);
+        border-color: #0D9488;
+    }
+    
+    /* Chart container animations */
+    .chart-container {
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .chart-container canvas {
+        transition: transform 0.3s ease;
+    }
+    
+    .chart-container:hover canvas {
+        transform: scale(1.02);
+    }
+    
+    /* Gradient backgrounds */
+    .gradient-primary {
+        background: linear-gradient(135deg, #0D9488 0%, #14B8A6 100%);
+    }
+    
+    .gradient-secondary {
+        background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%);
+    }
+    
+    /* Solid primary color - NO gradient */
+    .solid-primary {
+        background: #0D9488;
+    }
+    
+    /* Glass morphism effect */
+    .glass {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    /* Interactive button */
+    .toggle-btn {
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .toggle-btn::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 0;
+        height: 0;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.3);
+        transform: translate(-50%, -50%);
+        transition: width 0.6s, height 0.6s;
+    }
+    
+    .toggle-btn:active::after {
+        width: 300px;
+        height: 300px;
+    }
+    
+    /* Progress bar */
+    .progress-bar {
+        height: 4px;
+        background: linear-gradient(90deg, #0D9488, #14B8A6, #5eead4);
+        background-size: 200% 100%;
+        animation: gradient-shift 3s ease infinite;
+    }
+    
+    @keyframes gradient-shift {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+    
+    /* Tooltip */
+    .tooltip {
+        position: relative;
+    }
+    
+    .tooltip::before {
+        content: attr(data-tooltip);
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%) translateY(-8px);
+        padding: 8px 12px;
+        background: #1f2937;
+        color: white;
+        border-radius: 8px;
+        font-size: 12px;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s, transform 0.3s;
+    }
+    
+    .tooltip:hover::before {
+        opacity: 1;
+        transform: translateX(-50%) translateY(-4px);
+    }
+    
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+        background: #f1f5f9;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+        background: #0D9488;
+        border-radius: 4px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+        background: #0f766e;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="bg-white text-slate-900 min-h-screen">
-    <!-- Header -->
-    <header class="border-b border-slate-100 bg-white sticky top-0 z-50">
+<div class="min-h-screen bg-white">
+    <!-- Animated Header with Progress Bar -->
+    <header class="glass sticky top-0 z-50 border-b border-slate-200">
         <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-            <div class="flex items-center gap-6">
-                <div class="flex items-center gap-2">
-                    <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
-                        <span class="material-symbols-outlined text-white text-xl">database</span>
-                    </div>
-                    <span class="font-bold text-xl tracking-tight text-slate-900">AuroraDB</span>
+            <div class="flex items-center gap-6 fade-in-up">
+                <a href="{{ url_for('main.view_file', file_id=file.id) }}" 
+                   class="w-10 h-10 solid-primary rounded-xl flex items-center justify-center shadow-lg text-white hover:scale-110 transition-transform">
+                    <span class="material-symbols-outlined text-xl">arrow_back</span>
+                </a>
+                <div>
+                    <h1 class="font-bold text-lg solid-primary from-teal-600 to-teal-400 bg-clip-text text-transparent">
+                        Data Visualizations
+                    </h1>
+                    <p class="text-xs text-slate-500">{{ file.original_filename }}</p>
                 </div>
-                <nav class="flex items-center gap-6 text-sm font-medium">
-                    <a href="{{ url_for('main.dashboard') }}" class="text-slate-600 hover:text-primary transition-colors">Dashboard</a>
-                    <a href="#" class="text-primary font-semibold">Visualizations</a>
-                </nav>
             </div>
-            <div class="flex items-center gap-4">
-                <div class="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-xs font-bold text-white">
+            <div class="flex items-center gap-4 slide-in-right">
+                <div class="h-10 w-10 solid-primary rounded-full flex items-center justify-center text-sm font-bold text-white shadow-lg">
                     {{ current_user.name[0] }}{{ current_user.name.split()[1][0] if current_user.name.split()|length > 1 else '' }}
                 </div>
             </div>
@@ -42,29 +238,49 @@
     </header>
 
     <main class="max-w-7xl mx-auto px-6 py-12">
-        <!-- Page Header -->
-        <div class="mb-12">
-            <h1 class="text-4xl font-bold tracking-tight text-slate-900">Smart Visualizations Gallery</h1>
-            <p class="text-slate-500 mt-2 text-lg">Automated data summaries and visual insights for your uploaded files.</p>
+        <!-- Page Header with Animation -->
+        <div class="mb-12 fade-in-up">
+            <div class="flex items-center gap-3 mb-3">
+                <div class="w-12 h-12 solid-primary rounded-2xl flex items-center justify-center shadow-lg">
+                    <span class="material-symbols-outlined text-white text-3xl">auto_graph</span>
+                </div>
+                <div>
+                    <h2 class="text-3xl font-bold from-slate-900 to-slate-600 bg-clip-text">
+                        Smart Visualizations
+                    </h2>
+                    <p class="text-slate-500 text-lg mt-1">AI-powered insights from your data</p>
+                </div>
+            </div>
         </div>
 
         <!-- Discovery Cards -->
         <section class="mb-20">
-            <div class="flex items-center justify-between mb-8">
-                <h2 class="text-2xl font-bold text-slate-900">Discovery Cards</h2>
-                <button class="text-sm font-semibold text-primary hover:text-teal-700 transition-colors">View all</button>
+            <div class="flex items-center justify-between mb-8 fade-in-up">
+                <div>
+                    <h3 class="text-2xl font-bold text-slate-900">Quick Insights</h3>
+                    <p class="text-slate-500 text-sm mt-1">Interactive overview of key metrics</p>
+                </div>
+                <button class="text-sm font-semibold text-teal-600 hover:text-teal-700 transition-colors flex items-center gap-2">
+                    <span>Refresh Data</span>
+                    <span class="material-symbols-outlined text-lg">refresh</span>
+                </button>
             </div>
             
             <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
                 {% for chart in discovery_charts %}
-                <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 group hover:shadow-xl hover:border-primary/20 transition-all cursor-pointer"
+                <div class="discovery-card bg-white p-8 rounded-2xl shadow-lg border border-slate-200 cursor-pointer fade-in-up"
+                     style="animation-delay: {{ loop.index * 0.1 }}s"
                      onclick="scrollToChart('{{ chart.id }}')">
-                    <div class="w-12 h-12 rounded-xl bg-teal-50 flex items-center justify-center mb-6">
-                        <span class="material-symbols-outlined text-primary text-2xl">{{ chart.icon }}</span>
+                    <div class="flex items-start justify-between mb-6">
+                        <div class="w-14 h-14 rounded-2xl solid-primary flex items-center justify-center shadow-md">
+                            <span class="material-symbols-outlined text-white text-3xl">{{ chart.icon }}</span>
+                        </div>
+                        <div class="tooltip px-3 py-1 bg-teal-50 rounded-full" data-tooltip="Click to view details">
+                            <span class="text-xs font-semibold text-teal-600">{{ chart.type }}</span>
+                        </div>
                     </div>
-                    <h3 class="font-bold text-xl mb-1 group-hover:text-primary transition-colors">{{ chart.title }}</h3>
-                    <p class="text-slate-400 text-sm mb-10 font-medium">{{ chart.type }}</p>
-                    <div class="relative h-44 bg-slate-50 rounded-xl flex items-center justify-center overflow-hidden">
+                    <h4 class="font-bold text-xl mb-2 text-slate-900">{{ chart.title }}</h4>
+                    <div class="relative h-48 bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl flex items-center justify-center overflow-hidden mt-6 chart-container">
                         <canvas id="preview-{{ chart.id }}" class="max-w-full max-h-full"></canvas>
                     </div>
                 </div>
@@ -74,50 +290,78 @@
 
         <!-- Detailed Reports -->
         <section class="space-y-16">
-            <h2 class="text-2xl font-bold text-slate-900">Detailed Reports</h2>
+            <div class="fade-in-up">
+                <h3 class="text-2xl font-bold text-slate-900 mb-2">Detailed Analysis</h3>
+                <p class="text-slate-500">In-depth insights with AI-powered recommendations</p>
+            </div>
             
             {% for report in detailed_reports %}
-            <div class="space-y-6" id="{{ report.id }}">
-                <h3 class="font-bold text-slate-500 uppercase tracking-widest text-xs">FILE {{ loop.index }}: {{ report.category }}</h3>
+            <div class="space-y-6 fade-in-up" style="animation-delay: {{ loop.index * 0.15 }}s" id="{{ report.id }}">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 gradient-secondary rounded-lg flex items-center justify-center">
+                        <span class="text-white text-xs font-bold">{{ loop.index }}</span>
+                    </div>
+                    <h4 class="font-bold text-slate-500 uppercase tracking-widest text-xs">{{ report.category }}</h4>
+                </div>
                 
-                <div class="bg-white p-10 rounded-2xl shadow-sm border border-slate-100">
+                <div class="glass p-10 rounded-3xl shadow-xl border border-slate-200">
                     <!-- Chart Header -->
                     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-10">
-                        <h4 class="text-2xl font-bold text-slate-900">{{ report.title }}</h4>
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 solid-primary rounded-xl flex items-center justify-center shadow-lg">
+                                <span class="material-symbols-outlined text-white text-2xl">bar_chart</span>
+                            </div>
+                            <div>
+                                <h5 class="text-2xl font-bold text-slate-900">{{ report.title }}</h5>
+                                <p class="text-slate-500 text-sm mt-1">Interactive visualization</p>
+                            </div>
+                        </div>
                         <div class="flex gap-2">
                             <button onclick="showChart('{{ report.id }}')" 
-                                    class="chart-toggle-{{ report.id }} px-4 py-2 rounded-lg text-xs font-bold bg-teal-50 text-primary border border-teal-100">
-                                Bar Chart
+                                    class="chart-toggle-{{ report.id }} toggle-btn px-5 py-2.5 rounded-xl text-xs font-bold solid-primary text-white shadow-lg">
+                                <span class="flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-sm">bar_chart</span>
+                                    Chart View
+                                </span>
                             </button>
                             <button onclick="showTable('{{ report.id }}')" 
-                                    class="table-toggle-{{ report.id }} px-4 py-2 rounded-lg text-xs font-bold bg-slate-50 text-slate-500 border border-slate-200">
-                                Data Table
+                                    class="table-toggle-{{ report.id }} toggle-btn px-5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all">
+                                <span class="flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-sm">table</span>
+                                    Data Table
+                                </span>
                             </button>
                         </div>
                     </div>
                     
                     <!-- Chart View -->
-                    <div id="chart-{{ report.id }}" class="chart-view">
-                        <div class="bg-slate-50 p-10 rounded-2xl mb-8">
+                    <div id="chart-{{ report.id }}" class="chart-view scale-in">
+                        <div class="bg-gradient-to-br from-slate-50 to-white p-10 rounded-2xl mb-8 shadow-inner chart-container">
                             <canvas id="canvas-{{ report.id }}" class="max-w-full" style="max-height: 400px;"></canvas>
                         </div>
                     </div>
                     
-                    <!-- Table View (Hidden by default) -->
+                    <!-- Table View (Hidden) -->
                     <div id="table-{{ report.id }}" class="table-view hidden">
-                        <div class="bg-slate-50 p-6 rounded-2xl mb-8 overflow-x-auto">
+                        <div class="bg-white p-6 rounded-2xl mb-8 overflow-x-auto shadow-inner border border-slate-200">
                             <table class="w-full text-sm">
                                 <thead>
-                                    <tr class="border-b border-slate-200">
-                                        <th class="text-left py-3 px-4 font-semibold text-slate-700">Label</th>
-                                        <th class="text-right py-3 px-4 font-semibold text-slate-700">Value</th>
+                                    <tr class="border-b-2 border-slate-200">
+                                        <th class="text-left py-4 px-4 font-bold text-slate-700">Label</th>
+                                        <th class="text-right py-4 px-4 font-bold text-slate-700">Value</th>
+                                        <th class="text-right py-4 px-4 font-bold text-slate-700">Status</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for item in report.data %}
-                                    <tr class="border-b border-slate-100">
-                                        <td class="py-3 px-4 text-slate-600">{{ item.label }}</td>
-                                        <td class="py-3 px-4 text-right font-semibold text-slate-900">{{ item.value }}</td>
+                                    <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                                        <td class="py-3 px-4 text-slate-600 font-medium">{{ item.label }}</td>
+                                        <td class="py-3 px-4 text-right font-bold text-slate-900">{{ item.value }}</td>
+                                        <td class="py-3 px-4 text-right">
+                                            <span class="px-3 py-1 bg-teal-50 text-teal-600 rounded-full text-xs font-semibold">
+                                                Active
+                                            </span>
+                                        </td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
@@ -126,19 +370,25 @@
                     </div>
                     
                     <!-- AI Insight -->
-                    <div class="bg-teal-50 border border-teal-100 p-6 rounded-2xl flex items-start gap-4">
-                        <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
-                            <span class="material-symbols-outlined text-white text-lg">lightbulb</span>
+                    <div class="bg-teal-50 border-2 border-teal-200 p-6 rounded-2xl flex items-start gap-4 shadow-md">
+                        <div class="w-10 h-10 rounded-xl solid-primary flex items-center justify-center flex-shrink-0 shadow-lg">
+                            <span class="material-symbols-outlined text-white text-xl">psychology</span>
                         </div>
                         <div>
-                            <p class="text-xs font-bold text-primary mb-1">AI Insight</p>
-                            <p class="text-slate-700 text-xs leading-relaxed">{{ report.insight }}</p>
+                            <p class="text-xs font-bold text-teal-700 mb-2 uppercase tracking-wide">AI-Powered Insight</p>
+                            <p class="text-slate-700 text-sm leading-relaxed">{{ report.insight }}</p>
                         </div>
                     </div>
                 </div>
             </div>
             {% endfor %}
         </section>
+
+        <!-- Back to Top Button -->
+        <button onclick="window.scrollTo({top: 0, behavior: 'smooth'})" 
+                class="fixed bottom-8 right-8 w-14 h-14 gradient-primary rounded-full shadow-2xl flex items-center justify-center text-white hover:scale-110 transition-transform">
+            <span class="material-symbols-outlined text-2xl">arrow_upward</span>
+        </button>
     </main>
 </div>
 
@@ -146,20 +396,27 @@
 // Chart data from backend
 const chartData = {{ chart_data|tojson }};
 
-// Initialize all charts
+// Enhanced Chart.js defaults
+Chart.defaults.font.family = 'Inter';
+Chart.defaults.plugins.legend.display = false;
+Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(15, 23, 42, 0.9)';
+Chart.defaults.plugins.tooltip.padding = 12;
+Chart.defaults.plugins.tooltip.cornerRadius = 8;
+Chart.defaults.plugins.tooltip.titleFont = { size: 14, weight: 'bold' };
+Chart.defaults.plugins.tooltip.bodyFont = { size: 13 };
+
+// Initialize all charts with animations
 document.addEventListener('DOMContentLoaded', function() {
-    // Discovery card previews
     {% for chart in discovery_charts %}
-    createPreviewChart('preview-{{ chart.id }}', {{ chart.preview_data|tojson }});
+    createEnhancedPreviewChart('preview-{{ chart.id }}', {{ chart.preview_data|tojson }});
     {% endfor %}
     
-    // Detailed report charts
     {% for report in detailed_reports %}
-    createDetailedChart('canvas-{{ report.id }}', {{ report.chart_data|tojson }});
+    createEnhancedDetailedChart('canvas-{{ report.id }}', {{ report.chart_data|tojson }});
     {% endfor %}
 });
 
-function createPreviewChart(canvasId, data) {
+function createEnhancedPreviewChart(canvasId, data) {
     const ctx = document.getElementById(canvasId);
     if (!ctx) return;
     
@@ -170,22 +427,30 @@ function createPreviewChart(canvasId, data) {
             datasets: [{
                 data: data.values,
                 backgroundColor: data.colors,
-                borderWidth: 0
+                borderWidth: 0,
+                borderRadius: data.type === 'bar' ? 8 : 0,
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: true,
-            plugins: { legend: { display: false } },
+            animation: {
+                duration: 1500,
+                easing: 'easeInOutQuart'
+            },
+            plugins: { 
+                legend: { display: false },
+                tooltip: { enabled: true }
+            },
             scales: data.type === 'bar' ? {
-                y: { display: false },
+                y: { display: false, beginAtZero: true },
                 x: { display: false }
             } : {}
         }
     });
 }
 
-function createDetailedChart(canvasId, data) {
+function createEnhancedDetailedChart(canvasId, data) {
     const ctx = document.getElementById(canvasId);
     if (!ctx) return;
     
@@ -196,19 +461,25 @@ function createDetailedChart(canvasId, data) {
             datasets: [{
                 data: data.values,
                 backgroundColor: data.colors,
-                borderRadius: 8,
-                borderSkipped: false
+                borderRadius: 12,
+                borderSkipped: false,
+                hoverBackgroundColor: data.colors.map(c => c + 'dd'),
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: true,
+            animation: {
+                duration: 2000,
+                easing: 'easeInOutQuart',
+                delay: (context) => context.dataIndex * 100
+            },
             plugins: {
                 legend: { display: false },
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            return context.dataset.label + ': ' + context.parsed.y.toLocaleString();
+                            return 'Value: ' + context.parsed.y.toLocaleString();
                         }
                     }
                 }
@@ -216,37 +487,61 @@ function createDetailedChart(canvasId, data) {
             scales: {
                 y: {
                     beginAtZero: true,
-                    grid: { display: false },
+                    grid: { color: 'rgba(148, 163, 184, 0.1)' },
                     ticks: {
                         callback: function(value) {
                             return value >= 1000 ? (value/1000) + 'K' : value;
-                        }
+                        },
+                        font: { size: 11 }
                     }
                 },
                 x: {
-                    grid: { display: false }
+                    grid: { display: false },
+                    ticks: { font: { size: 11 } }
                 }
+            },
+            interaction: {
+                mode: 'index',
+                intersect: false
             }
         }
     });
 }
 
 function showChart(reportId) {
-    document.getElementById('chart-' + reportId).classList.remove('hidden');
-    document.getElementById('table-' + reportId).classList.add('hidden');
-    document.querySelector('.chart-toggle-' + reportId).className = 'chart-toggle-' + reportId + ' px-4 py-2 rounded-lg text-xs font-bold bg-teal-50 text-primary border border-teal-100';
-    document.querySelector('.table-toggle-' + reportId).className = 'table-toggle-' + reportId + ' px-4 py-2 rounded-lg text-xs font-bold bg-slate-50 text-slate-500 border border-slate-200';
+    const chartView = document.getElementById('chart-' + reportId);
+    const tableView = document.getElementById('table-' + reportId);
+    
+    tableView.classList.add('hidden');
+    chartView.classList.remove('hidden');
+    chartView.classList.add('scale-in');
+    
+    document.querySelector('.chart-toggle-' + reportId).className = 
+        'chart-toggle-' + reportId + ' toggle-btn px-5 py-2.5 rounded-xl text-xs font-bold gradient-primary text-white shadow-lg';
+    document.querySelector('.table-toggle-' + reportId).className = 
+        'table-toggle-' + reportId + ' toggle-btn px-5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all';
 }
 
 function showTable(reportId) {
-    document.getElementById('chart-' + reportId).classList.add('hidden');
-    document.getElementById('table-' + reportId).classList.remove('hidden');
-    document.querySelector('.chart-toggle-' + reportId).className = 'chart-toggle-' + reportId + ' px-4 py-2 rounded-lg text-xs font-bold bg-slate-50 text-slate-500 border border-slate-200';
-    document.querySelector('.table-toggle-' + reportId).className = 'table-toggle-' + reportId + ' px-4 py-2 rounded-lg text-xs font-bold bg-teal-50 text-primary border border-teal-100';
+    const chartView = document.getElementById('chart-' + reportId);
+    const tableView = document.getElementById('table-' + reportId);
+    
+    chartView.classList.add('hidden');
+    tableView.classList.remove('hidden');
+    tableView.classList.add('scale-in');
+    
+    document.querySelector('.chart-toggle-' + reportId).className = 
+        'chart-toggle-' + reportId + ' toggle-btn px-5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all';
+    document.querySelector('.table-toggle-' + reportId).className = 
+        'table-toggle-' + reportId + ' toggle-btn px-5 py-2.5 rounded-xl text-xs font-bold solid-primary text-white shadow-lg';
 }
 
 function scrollToChart(chartId) {
-    document.getElementById(chartId).scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const element = document.getElementById(chartId);
+    if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        element.classList.add('scale-in');
+    }
 }
 </script>
 {% endblock %}
