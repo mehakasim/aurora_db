@@ -97,7 +97,7 @@
     <!-- Header -->
     <header class="h-12 border-b border-gray-200 flex items-center justify-between px-4 bg-white">
         <div class="flex items-center gap-2">
-            <a href="{{ url_for('main.dashboard') }}" class="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-lg text-white hover:scale-110 transition-transform">
+            <a href="{{ url_for('main.dashboard') }}" class="w-8 h-8 bg-primary rounded flex items-center justify-center text-white hover:opacity-90">
                 <span class="material-icons-outlined text-xl">arrow_back</span>
             </a>
             <div>
@@ -136,14 +136,9 @@
         <button onclick="window.location.reload()" class="p-1 hover:bg-gray-100 rounded">
             <span class="material-icons-outlined text-lg">refresh</span>
         </button>
-        <sspan class="border-l pl-2" id="rowCount">
-    {% set displayed = preview_data.rows|length %}
-    {% if preview_data.total_rows <= displayed %}
-        Showing all {{ preview_data.total_rows }} rows
-    {% else %}
-        Showing <span id="currentRows">{{ displayed }}</span> of {{ preview_data.total_rows }} rows
-    {% endif %}
-</span>
+        <span class="border-l pl-2" id="rowCount">
+            Showing <span id="currentRows">{{ [preview_data.displayed_rows, 100]|min }}</span> of {{ preview_data.total_rows }} rows
+        </span>
         <span id="queryIndicator" class="hidden ml-2 px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium">
             Query Results
         </span>
@@ -249,21 +244,17 @@
             <!-- Pagination Controls -->
             <div id="pagination" class="border-t p-3 bg-gray-50 flex items-center justify-between">
                 <p class="text-sm text-gray-600">
-    {% set displayed = preview_data.rows|length %}
-    <span id="paginationText">
-        {% if preview_data.total_rows <= displayed %}
-            Showing all {{ preview_data.total_rows }} rows
-        {% else %}
-            Showing first {{ displayed }} of {{ preview_data.total_rows }} rows
-        {% endif %}
-    </span>
-</p>
-
+                    <span id="paginationText">Showing first 100 of {{ preview_data.total_rows }} rows</span>
+                </p>
                 {% if preview_data.total_rows > 100 %}
                 <div class="flex gap-2">
                     <button id="loadMoreBtn" onclick="loadMoreRows()" 
                             class="px-4 py-2 bg-primary text-white rounded text-sm font-semibold hover:opacity-90">
                         Load Next 100 Rows
+                    </button>
+                    <button onclick="loadAllRows()" 
+                            class="px-4 py-2 bg-gray-200 text-gray-700 rounded text-sm font-semibold hover:bg-gray-300">
+                        Load All ({{ preview_data.total_rows }} rows)
                     </button>
                 </div>
                 {% endif %}
@@ -469,11 +460,14 @@ function askQuestion() {
         
         if (data.result_type === 'table') {
             updateSpreadsheet(data.data.columns, data.data.rows);
-            document.getElementById('queryIndicator').classList.remove('hidden');
-            document.getElementById('dataInfo').textContent = `${data.data.row_count} results × ${data.data.columns.length} columns`;
+            const queryIndicator = document.getElementById('queryIndicator');
+            const dataInfo = document.getElementById('dataInfo');
+            if (queryIndicator) queryIndicator.classList.remove('hidden');
+            if (dataInfo) dataInfo.textContent = `${data.data.row_count} results × ${data.data.columns.length} columns`;
             isQueryResult = true;
         } else {
-            document.getElementById('queryIndicator').classList.add('hidden');
+            const queryIndicator = document.getElementById('queryIndicator');
+            if (queryIndicator) queryIndicator.classList.add('hidden');
         }
         
         document.getElementById('queryInput').value = '';
@@ -592,9 +586,6 @@ function updateSpreadsheet(columns, rows) {
 function resetView() {
     const table = document.getElementById('dataTable');
     const thead = table.querySelector('thead tr');
-    const totalRows = {{ preview_data.total_rows }};
-const initialRows = {{ preview_data.rows|length }};
-let currentLoadedRows = initialRows;
     
     thead.innerHTML = '<th class="row-num">#</th>';
     originalColumns.forEach(col => {
@@ -612,14 +603,11 @@ let currentLoadedRows = initialRows;
         tableBody.appendChild(tr);
     });
     
-    currentLoadedRows = initialRows;
+    currentLoadedRows = 100;
     document.getElementById('queryIndicator').classList.add('hidden');
     document.getElementById('dataInfo').textContent = `{{ file.row_count }} rows × {{ preview_data.columns|length }} columns`;
-    document.getElementById('paginationText').textContent = 
-        totalRows <= initialRows
-            ? `Showing all ${totalRows} rows`
-            : `Showing first ${initialRows} of ${totalRows} rows`;
-    document.getElementById('currentRows').textContent = initialRows;
+    document.getElementById('paginationText').textContent = 'Showing first 100 of {{ preview_data.total_rows }} rows';
+    document.getElementById('currentRows').textContent = '100';
     isQueryResult = false;
 }
 
