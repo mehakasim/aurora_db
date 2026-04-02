@@ -1,11 +1,18 @@
 """
 AI Processor - Natural Language to SQL Conversion
 """
-import ollama
+import difflib
 import json
+import os
 import re
+from urllib import error, request
+
+try:
+    import ollama
+except ImportError:
+    ollama = None
+
 from ..utils.db_utils import execute_query
-import random
 
 
 def process_natural_language_query(question, table_name, schema):
@@ -24,9 +31,64 @@ def process_natural_language_query(question, table_name, schema):
     # Create mapping of common terms to actual columns
     column_hints = create_column_hints(question_lower, schema['columns'])
     
-    # Create enhanced prompt
+    prompt = build_sql_prompt(
+        question=question,
+        table_name=table_name,
+        columns_str=columns_str,
+        column_hints=column_hints,
+        is_show_query=is_show_query,
+        is_count_only=is_count_only
+    )
+
+    try:
+        sql_query = generate_sql_query(prompt)
+        sql_query = normalize_sql_for_question(sql_query, question, schema)
+        print(f"Generated SQL: {sql_query}")
+
+        # Execute query
+        try:
+            result = execute_query(sql_query, table_name)
+        except Exception as e:
+            print(f"Query execution failed: {str(e)}")
+            return fallback_query_processing(question, table_name, schema)
+
+        # Format response with detailed, conversational answer
+        if is_single_value_query(sql_query):
+            value = result['rows'][0][0] if result['rows'] else 0
+            answer = format_detailed_value_answer(question, value, result['columns'][0] if result['columns'] else 'count', schema)
+
+            return {
+                'result_type': 'value',
+                'answer': answer,
+                'value': value,
+                'sql_query': sql_query
+            }
+        else:
+            if len(result['rows']) == 0:
+                return create_helpful_no_results_response(question, schema, sql_query)
+
+            answer = format_detailed_table_answer(question, len(result['rows']), result['columns'], result['rows'], schema)
+
+            return {
+                'result_type': 'table',
+                'answer': answer,
+                'columns': result['columns'],
+                'rows': result['rows'],
+                'sql_query': sql_query
+            }
+
+    except Exception as e:
+        print(f"AI processing error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+
+        return fallback_query_processing(question, table_name, schema)
+
+
+def build_sql_prompt(question, table_name, columns_str, column_hints, is_show_query, is_count_only):
+    """Build the SQL generation prompt shared across providers."""
     if is_show_query and not is_count_only:
-        prompt = f"""Convert this question to SQL. Return ONLY the SQL query, nothing else.
+        return f"""Convert this question to SQL. Return ONLY the SQL query, nothing else.
 
 Table: {table_name}
 Exact columns: {columns_str}
@@ -38,12 +100,14 @@ CRITICAL RULES:
 2. Column names MUST be EXACTLY from the list above (case-sensitive)
 3. For filtering, use WHERE with the exact column name
 4. Limit to 1000 rows
+5. Add ORDER BY the relevant numeric column DESC for top, highest, best, greater than, above, or descending requests
+6. Add ORDER BY the relevant numeric column ASC for bottom, lowest, least, less than, below, or ascending requests
+7. Add LIMIT N when the question asks for top N or bottom N
 
 {column_hints}
 
 SQL:"""
-    else:
-        prompt = f"""Convert to SQL. Return ONLY the SQL query.
+    return f"""Convert to SQL. Return ONLY the SQL query.
 
 Table: {table_name}
 Exact columns: {columns_str}
@@ -60,55 +124,109 @@ Rules:
 
 SQL:"""
 
-    try:
-        # Try with Ollama first
-        response = ollama.chat(
-            model='llama3.2:3b',
-            messages=[{'role': 'user', 'content': prompt}],
-            options={'temperature': 0.1}
-        )
-        
-        sql_query = clean_sql_query(response['message']['content'].strip())
-        print(f"Generated SQL: {sql_query}")
-        
-        # Execute query
+
+def generate_sql_query(prompt):
+    """Generate SQL using a cloud provider first when configured, then local Ollama."""
+    use_cloud_api = should_use_cloud_api()
+    attempts = ['cloud', 'ollama'] if use_cloud_api else ['ollama', 'cloud']
+
+    errors = []
+    for attempt in attempts:
         try:
-            result = execute_query(sql_query, table_name)
-        except Exception as e:
-            print(f"Query execution failed: {str(e)}")
-            return fallback_query_processing(question, table_name, schema)
-        
-        # Format response with detailed, conversational answer
-        if is_single_value_query(sql_query):
-            value = result['rows'][0][0] if result['rows'] else 0
-            answer = format_detailed_value_answer(question, value, result['columns'][0] if result['columns'] else 'count', schema)
-            
-            return {
-                'result_type': 'value',
-                'answer': answer,
-                'value': value,
-                'sql_query': sql_query
-            }
-        else:
-            if len(result['rows']) == 0:
-                return create_helpful_no_results_response(question, schema, sql_query)
-            
-            answer = format_detailed_table_answer(question, len(result['rows']), result['columns'], result['rows'], schema)
-            
-            return {
-                'result_type': 'table',
-                'answer': answer,
-                'columns': result['columns'],
-                'rows': result['rows'],
-                'sql_query': sql_query
-            }
-            
-    except Exception as e:
-        print(f"AI processing error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        
-        return fallback_query_processing(question, table_name, schema)
+            if attempt == 'cloud':
+                content = generate_sql_via_cloud(prompt)
+            else:
+                content = generate_sql_via_ollama(prompt)
+            return clean_sql_query(content.strip())
+        except Exception as exc:
+            errors.append(f"{attempt}: {exc}")
+
+    raise RuntimeError(" | ".join(errors))
+
+
+def should_use_cloud_api():
+    """Prefer cloud mode when explicitly enabled or when cloud credentials are present."""
+    if os.getenv('USE_CLOUD_API', 'false').lower() == 'true':
+        return True
+
+    return any([
+        os.getenv('GROQ_API_KEY'),
+        os.getenv('OPENAI_API_KEY'),
+        os.getenv('OPENROUTER_API_KEY')
+    ])
+
+
+def generate_sql_via_cloud(prompt):
+    """Call an OpenAI-compatible provider such as Groq."""
+    provider = os.getenv('API_PROVIDER', 'groq').lower()
+
+    if provider == 'groq':
+        api_key = os.getenv('GROQ_API_KEY')
+        model = os.getenv('GROQ_MODEL', 'llama-3.1-8b-instant')
+        base_url = os.getenv('GROQ_BASE_URL', 'https://api.groq.com/openai/v1/chat/completions')
+    elif provider == 'openai':
+        api_key = os.getenv('OPENAI_API_KEY')
+        model = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
+        base_url = os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1/chat/completions')
+    elif provider == 'openrouter':
+        api_key = os.getenv('OPENROUTER_API_KEY')
+        model = os.getenv('OPENROUTER_MODEL', 'meta-llama/llama-3.1-8b-instruct')
+        base_url = os.getenv('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1/chat/completions')
+    else:
+        raise RuntimeError(f"Unsupported API_PROVIDER: {provider}")
+
+    if not api_key:
+        raise RuntimeError(f"Missing API key for provider '{provider}'")
+
+    payload = {
+        'model': model,
+        'messages': [
+            {
+                'role': 'system',
+                'content': 'You translate spreadsheet questions into SQLite SQL. Return only executable SQL with no explanation.'
+            },
+            {'role': 'user', 'content': prompt}
+        ],
+        'temperature': 0.1
+    }
+
+    req = request.Request(
+        base_url,
+        data=json.dumps(payload).encode('utf-8'),
+        headers={
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json'
+        },
+        method='POST'
+    )
+
+    try:
+        with request.urlopen(req, timeout=45) as response:
+            body = json.loads(response.read().decode('utf-8'))
+    except error.HTTPError as exc:
+        details = exc.read().decode('utf-8', errors='ignore')
+        raise RuntimeError(f"HTTP {exc.code}: {details}") from exc
+    except error.URLError as exc:
+        raise RuntimeError(f"Network error: {exc.reason}") from exc
+
+    try:
+        return body['choices'][0]['message']['content']
+    except (KeyError, IndexError, TypeError) as exc:
+        raise RuntimeError(f"Unexpected cloud response: {body}") from exc
+
+
+def generate_sql_via_ollama(prompt):
+    """Call the local Ollama service when available."""
+    if ollama is None:
+        raise RuntimeError("ollama package is not installed")
+
+    model = os.getenv('OLLAMA_MODEL', 'llama3.2:3b')
+    response = ollama.chat(
+        model=model,
+        messages=[{'role': 'user', 'content': prompt}],
+        options={'temperature': 0.1}
+    )
+    return response['message']['content']
 
 
 def format_detailed_value_answer(question, value, column_name, schema):
@@ -324,6 +442,13 @@ def create_column_hints(question, columns):
         'focus': 'focus_index',
         'burnout': 'burnout_level',
         'productivity': 'productivity_score',
+        'employment rate': 'employment_rate',
+        'employment': 'employment_rate',
+        'placement rate': 'employment_rate',
+        'discount percentage': 'discount_percentage',
+        'discount percent': 'discount_percentage',
+        'discount': 'discount_percentage',
+        'product': 'product',
     }
     
     for term, col in mappings.items():
@@ -357,24 +482,46 @@ def fallback_query_processing(question, table_name, schema):
         target_column = 'burnout_level'
     elif 'focus' in question_lower:
         target_column = 'focus_index'
+    elif 'employment' in question_lower or 'placement' in question_lower:
+        target_column = 'employment_rate'
+    elif 'discount' in question_lower:
+        target_column = find_matching_column(
+            ['discount_percentage', 'discount_percent', 'discount', 'percentage_discount'],
+            columns
+        )
     
     if target_column and target_column not in columns:
         target_column = None
     
     if any(word in question_lower for word in ['show', 'display', 'list', 'find', 'get', 'all']):
         where_clause = ""
+        order_clause = ""
+        limit_clause = "LIMIT 1000"
         
         if numbers and target_column:
             value = numbers[0]
             
             if any(word in question_lower for word in ['greater', 'more', 'above', 'higher', '>']):
                 where_clause = f"WHERE {target_column} > {value}"
+                order_clause = f"ORDER BY {target_column} DESC"
             elif any(word in question_lower for word in ['less', 'below', 'lower', '<']):
                 where_clause = f"WHERE {target_column} < {value}"
+                order_clause = f"ORDER BY {target_column} ASC"
             elif any(word in question_lower for word in ['equal', 'exactly', '=']):
                 where_clause = f"WHERE {target_column} = {value}"
+
+        if 'top' in question_lower and target_column:
+            order_clause = f"ORDER BY {target_column} DESC"
+            top_limit = infer_top_limit(question_lower)
+            if top_limit:
+                limit_clause = f"LIMIT {top_limit}"
+        elif 'bottom' in question_lower and target_column:
+            order_clause = f"ORDER BY {target_column} ASC"
+            bottom_limit = infer_top_limit(question_lower)
+            if bottom_limit:
+                limit_clause = f"LIMIT {bottom_limit}"
         
-        sql = f"SELECT * FROM {table_name} {where_clause} LIMIT 1000;"
+        sql = f"SELECT * FROM {table_name} {where_clause} {order_clause} {limit_clause};"
         
         try:
             result = execute_query(sql)
@@ -463,6 +610,188 @@ def clean_sql_query(sql):
         sql += ';'
     
     return sql
+
+
+def normalize_sql_for_question(sql, question, schema):
+    """Make sort-sensitive queries deterministic when the model omits ordering."""
+    sql_upper = sql.upper()
+    if 'SELECT' not in sql_upper or 'COUNT(' in sql_upper:
+        return sql
+
+    question_lower = question.lower()
+    target_column = infer_target_sort_column(question_lower, schema.get('columns', []))
+    sort_direction = infer_sort_direction(question_lower)
+
+    normalized_sql = sql.rstrip().rstrip(';')
+    if should_force_full_row_selection(question_lower):
+        normalized_sql = force_select_all(normalized_sql)
+
+    if not target_column or not sort_direction:
+        return f"{normalized_sql};"
+
+    if 'ORDER BY' not in sql_upper:
+        limit_match = re.search(r'\sLIMIT\s+\d+\s*$', normalized_sql, re.IGNORECASE)
+        order_clause = f" ORDER BY {target_column} {sort_direction}"
+        if limit_match:
+            normalized_sql = (
+                f"{normalized_sql[:limit_match.start()]}"
+                f"{order_clause}"
+                f"{normalized_sql[limit_match.start():]}"
+            )
+        else:
+            normalized_sql = f"{normalized_sql}{order_clause}"
+
+    limit_value = infer_top_limit(question_lower)
+    if limit_value:
+        if 'LIMIT' in sql_upper:
+            normalized_sql = re.sub(r'\sLIMIT\s+\d+\s*$', f" LIMIT {limit_value}", normalized_sql, flags=re.IGNORECASE)
+        else:
+            normalized_sql = f"{normalized_sql} LIMIT {limit_value}"
+    elif 'LIMIT' not in sql_upper and should_apply_default_limit(question_lower):
+        normalized_sql = f"{normalized_sql} LIMIT 1000"
+
+    return f"{normalized_sql};"
+
+
+def infer_target_sort_column(question_lower, columns):
+    """Infer the most likely metric column mentioned in the question."""
+    phrase_mappings = {
+        'employment rate': 'employment_rate',
+        'employment': 'employment_rate',
+        'placement rate': 'employment_rate',
+        'exam score': 'exam_score',
+        'score': 'exam_score',
+        'marks': 'exam_score',
+        'grade': 'exam_score',
+        'study hour': 'study_hours',
+        'sleep': 'sleep_hours',
+        'productivity': 'productivity_score',
+        'burnout': 'burnout_level',
+        'focus': 'focus_index',
+        'gpa': 'gpa',
+        'rating': 'rating',
+        'salary': 'salary',
+        'revenue': 'revenue',
+        'discount percentage': 'discount_percentage',
+        'discount percent': 'discount_percentage',
+        'discount': 'discount_percentage',
+    }
+
+    columns_lower = {column.lower(): column for column in columns}
+    for phrase, expected_column in phrase_mappings.items():
+        if phrase in question_lower:
+            matched_column = find_matching_column([expected_column], columns)
+            if matched_column:
+                return matched_column
+
+    question_tokens = tokenize_identifier(question_lower)
+    ranking_words = {
+        'top', 'bottom', 'highest', 'lowest', 'best', 'worst',
+        'greater', 'less', 'above', 'below', 'desc', 'descending',
+        'asc', 'ascending', 'display', 'show', 'where', 'than'
+    }
+    best_match = None
+    best_score = 0
+
+    for column in columns:
+        column_tokens = tokenize_identifier(column)
+        score = len((question_tokens & column_tokens) - ranking_words)
+        if score > best_score:
+            best_score = score
+            best_match = column
+
+    if best_match:
+        return best_match
+
+    phrase_guess = fuzzy_match_phrase_to_column(question_lower, columns)
+    if phrase_guess:
+        return phrase_guess
+
+    return None
+
+
+def infer_sort_direction(question_lower):
+    """Determine whether a question implies ascending or descending order."""
+    desc_terms = ['top', 'highest', 'best', 'greater', 'more', 'above', 'desc', 'descending']
+    asc_terms = ['bottom', 'lowest', 'least', 'less', 'below', 'asc', 'ascending']
+
+    if any(term in question_lower for term in desc_terms):
+        return 'DESC'
+    if any(term in question_lower for term in asc_terms):
+        return 'ASC'
+    return None
+
+
+def infer_top_limit(question_lower):
+    """Read explicit sizes such as 'top 5' or 'bottom 10'."""
+    match = re.search(r'\b(?:top|bottom)\s+(\d+)\b', question_lower)
+    if match:
+        return int(match.group(1))
+    return None
+
+
+def should_apply_default_limit(question_lower):
+    """Keep explicit ranking queries bounded when the model omits a limit."""
+    return any(term in question_lower for term in ['top', 'bottom', 'highest', 'lowest'])
+
+
+def tokenize_identifier(value):
+    """Split free text and snake_case identifiers into comparable tokens."""
+    return set(token for token in re.split(r'[^a-z0-9]+', value.lower()) if token)
+
+
+def should_force_full_row_selection(question_lower):
+    """Return full rows for display and ranking requests instead of narrow projections."""
+    return any(term in question_lower for term in [
+        'show', 'display', 'list', 'give me', 'find', 'get',
+        'top', 'bottom', 'highest', 'lowest', 'greater', 'above', 'less', 'below'
+    ])
+
+
+def force_select_all(sql):
+    """Replace a narrow SELECT list with SELECT * while preserving the rest of the query."""
+    if re.search(r'^\s*SELECT\s+\*\s+FROM\b', sql, re.IGNORECASE):
+        return sql
+    return re.sub(r'^\s*SELECT\s+.+?\s+FROM\b', 'SELECT * FROM', sql, count=1, flags=re.IGNORECASE | re.DOTALL)
+
+
+def find_matching_column(candidates, columns):
+    """Find the first exact or close schema match for one of the candidate names."""
+    columns_lower = {column.lower(): column for column in columns}
+    for candidate in candidates:
+        if candidate.lower() in columns_lower:
+            return columns_lower[candidate.lower()]
+
+    close_match = difflib.get_close_matches(
+        candidates[0].lower(),
+        list(columns_lower.keys()),
+        n=1,
+        cutoff=0.75
+    )
+    if close_match:
+        return columns_lower[close_match[0]]
+
+    return None
+
+
+def fuzzy_match_phrase_to_column(question_lower, columns):
+    """Use fuzzy token matching so minor typos still find the right metric column."""
+    cleaned_question = " ".join(tokenize_identifier(question_lower))
+    best_column = None
+    best_score = 0.0
+
+    for column in columns:
+        column_phrase = " ".join(tokenize_identifier(column))
+        if not column_phrase:
+            continue
+        score = difflib.SequenceMatcher(None, cleaned_question, column_phrase).ratio()
+        if score > best_score:
+            best_score = score
+            best_column = column
+
+    if best_score >= 0.45:
+        return best_column
+    return None
 
 
 def is_single_value_query(sql):
