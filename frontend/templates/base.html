@@ -7,16 +7,125 @@
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .flash-stack {
+            width: min(24rem, calc(100vw - 2rem));
+        }
+
+        .flash-toast {
+            position: relative;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            background: rgba(15, 23, 42, 0.92);
+            backdrop-filter: blur(14px);
+            box-shadow: 0 18px 45px rgba(15, 23, 42, 0.22);
+            transition: opacity 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .flash-toast::before {
+            content: "";
+            position: absolute;
+            inset: 0 auto 0 0;
+            width: 4px;
+            border-radius: 999px;
+            background: currentColor;
+            opacity: 0.95;
+        }
+
+        .flash-toast:hover {
+            box-shadow: 0 22px 50px rgba(15, 23, 42, 0.28);
+        }
+
+        .flash-toast--success {
+            color: #34d399;
+        }
+
+        .flash-toast--error {
+            color: #f87171;
+        }
+
+        .flash-toast--info {
+            color: #38bdf8;
+        }
+
+        .flash-toast__icon {
+            width: 2.25rem;
+            height: 2.25rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.12);
+            color: white;
+            flex-shrink: 0;
+        }
+
+        .flash-toast__title {
+            color: white;
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .flash-toast__message {
+            color: rgba(255, 255, 255, 0.92);
+            font-size: 0.92rem;
+            line-height: 1.45;
+            margin-top: 0.15rem;
+        }
+
+        .flash-toast__close {
+            color: rgba(255, 255, 255, 0.78);
+            background: rgba(255, 255, 255, 0.08);
+            transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+        }
+
+        .flash-toast__close:hover {
+            color: white;
+            background: rgba(255, 255, 255, 0.16);
+            transform: scale(1.04);
+        }
+
+        .flash-toast.is-hiding {
+            opacity: 0;
+            transform: translateY(-10px) scale(0.98);
+        }
+    </style>
     {% block extra_head %}{% endblock %}
 </head>
 <body>
     <!-- Flash Messages -->
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-            <div class="fixed top-4 right-4 z-50 space-y-2">
+            <div class="flash-stack fixed top-4 right-4 z-50 space-y-3" id="flashContainer">
                 {% for category, message in messages %}
-                    <div class="px-6 py-3 rounded-lg shadow-lg {% if category == 'error' %}bg-red-500{% elif category == 'success' %}bg-green-500{% else %}bg-blue-500{% endif %} text-white">
-                        {{ message }}
+                    <div class="flash-toast {% if category == 'error' %}flash-toast--error{% elif category == 'success' %}flash-toast--success{% else %}flash-toast--info{% endif %} flex items-start gap-3 rounded-2xl px-5 py-4 text-white" data-flash-toast>
+                        <div class="flash-toast__icon">
+                            <span class="material-symbols-outlined text-lg">
+                                {% if category == 'error' %}error{% elif category == 'success' %}check_circle{% else %}info{% endif %}
+                            </span>
+                        </div>
+                        <div class="min-w-0 flex-1 pr-2">
+                            <div class="flash-toast__title">
+                                {% if category == 'error' %}Error{% elif category == 'success' %}Success{% else %}Notice{% endif %}
+                            </div>
+                            <div class="flash-toast__message">
+                                {{ message }}
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            class="flash-toast__close shrink-0 rounded-full p-1.5"
+                            aria-label="Dismiss notification"
+                            onclick="dismissFlash(this.closest('[data-flash-toast]'))"
+                        >
+                            <span class="material-symbols-outlined text-base">close</span>
+                        </button>
                     </div>
                 {% endfor %}
             </div>
@@ -26,5 +135,18 @@
     {% block content %}{% endblock %}
     
     {% block scripts %}{% endblock %}
+    <script>
+        function dismissFlash(toast) {
+            if (!toast) return;
+            toast.classList.add('is-hiding');
+            window.setTimeout(() => toast.remove(), 300);
+        }
+
+        window.addEventListener('load', () => {
+            document.querySelectorAll('[data-flash-toast]').forEach((toast) => {
+                window.setTimeout(() => dismissFlash(toast), 3000);
+            });
+        });
+    </script>
 </body>
 </html>

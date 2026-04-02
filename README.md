@@ -49,12 +49,14 @@ Visit `http://localhost:5000`
 This branch is set up for free-host friendly demos:
 
 - `Procfile` starts the app with `gunicorn`
+- `app.py` and `vercel.json` provide a Vercel entrypoint
 - `backend/app/utils/ai_processor.py` supports Groq, OpenAI, or OpenRouter through OpenAI-compatible HTTP APIs
 - Ollama remains available as an optional local fallback
+- On Vercel, SQLite and uploads are redirected to `/tmp`, which is temporary and non-persistent
 
 Suggested demo hosts:
 
-- Hugging Face Spaces
+- Vercel for temporary demos only
 - Render
 - Koyeb
 

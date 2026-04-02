@@ -31,6 +31,14 @@ def process_natural_language_query(question, table_name, schema):
     # Create mapping of common terms to actual columns
     column_hints = create_column_hints(question_lower, schema['columns'])
     
+    direct_sql_query = try_build_direct_sql_query(
+        question=question,
+        table_name=table_name,
+        schema=schema,
+        is_show_query=is_show_query,
+        is_count_only=is_count_only
+    )
+
     prompt = build_sql_prompt(
         question=question,
         table_name=table_name,
@@ -41,8 +49,11 @@ def process_natural_language_query(question, table_name, schema):
     )
 
     try:
-        sql_query = generate_sql_query(prompt)
-        sql_query = normalize_sql_for_question(sql_query, question, schema)
+        if direct_sql_query:
+            sql_query = direct_sql_query
+        else:
+            sql_query = generate_sql_query(prompt)
+            sql_query = normalize_sql_for_question(sql_query, question, schema)
         print(f"Generated SQL: {sql_query}")
 
         # Execute query
@@ -107,6 +118,76 @@ CRITICAL RULES:
 {column_hints}
 
 SQL:"""
+
+
+def try_build_direct_sql_query(question, table_name, schema, is_show_query, is_count_only):
+    """Build SQL directly for simple filter and ranking questions."""
+    question_lower = question.lower()
+    columns = schema.get('columns', [])
+    target_column = infer_target_sort_column(question_lower, columns)
+    aggregate_function = infer_aggregate_function(question_lower)
+    filter_operator = infer_filter_operator(question_lower)
+    filter_value = infer_filter_value(question_lower)
+    text_filter_operator = infer_text_filter_operator(question_lower)
+    text_filter_value = infer_text_filter_value(question_lower)
+    contextual_filters = infer_contextual_filters(question_lower, columns)
+    top_limit = infer_top_limit(question_lower)
+    sort_direction = infer_sort_direction(question_lower)
+
+    if top_limit and sort_direction:
+        filter_columns = {column for column, _, _, _ in contextual_filters}
+        if target_column in filter_columns:
+            fallback_metric = infer_default_ranking_column(columns)
+            if fallback_metric:
+                target_column = fallback_metric
+
+    if not target_column:
+        return None
+
+    if aggregate_function:
+        where_clause = build_where_clause(contextual_filters)
+        alias = aggregate_function.lower()
+        return (
+            f"SELECT {aggregate_function}({target_column}) AS {alias} FROM {table_name} "
+            f"{where_clause};"
+        )
+
+    if is_show_query and filter_operator and filter_value is not None:
+        order_direction = 'DESC' if filter_operator in ('>', '>=') else 'ASC'
+        return (
+            f"SELECT * FROM {table_name} "
+            f"WHERE {target_column} {filter_operator} {format_sql_literal(filter_value)} "
+            f"ORDER BY {target_column} {order_direction} LIMIT 1000;"
+        )
+
+    if is_show_query and text_filter_operator and text_filter_value is not None:
+        return (
+            f"SELECT * FROM {table_name} "
+            f"WHERE LOWER({target_column}) {text_filter_operator} LOWER({format_sql_literal(text_filter_value)}) "
+            f"LIMIT 1000;"
+        )
+
+    if is_count_only and filter_operator and filter_value is not None:
+        return (
+            f"SELECT COUNT(*) AS count FROM {table_name} "
+            f"WHERE {target_column} {filter_operator} {format_sql_literal(filter_value)};"
+        )
+
+    if is_count_only and text_filter_operator and text_filter_value is not None:
+        return (
+            f"SELECT COUNT(*) AS count FROM {table_name} "
+            f"WHERE LOWER({target_column}) {text_filter_operator} LOWER({format_sql_literal(text_filter_value)});"
+        )
+
+    if is_show_query and top_limit and sort_direction:
+        where_clause = build_where_clause(contextual_filters)
+        return (
+            f"SELECT * FROM {table_name} "
+            f"{where_clause} "
+            f"ORDER BY {target_column} {sort_direction} LIMIT {top_limit};"
+        )
+
+    return None
     return f"""Convert to SQL. Return ONLY the SQL query.
 
 Table: {table_name}
@@ -264,7 +345,7 @@ def format_detailed_value_answer(question, value, column_name, schema):
             responses.append(f"This is a substantial number of records. The data has been filtered to show you exactly what you requested.")
     
     elif 'average' in question_lower or 'mean' in question_lower or 'avg' in question_lower:
-        responses.append(f"The average value for {column_name.replace('_', ' ')} is **{value}**.")
+        responses.append(f"The average value for {column_name.replace('_', ' ')} is {value}.")
         responses.append(f"This represents the mean across all records in your dataset.")
         
         if isinstance(value, (int, float)):
@@ -445,6 +526,10 @@ def create_column_hints(question, columns):
         'employment rate': 'employment_rate',
         'employment': 'employment_rate',
         'placement rate': 'employment_rate',
+        'founded year': 'founded_year',
+        'founded': 'founded_year',
+        'established year': 'founded_year',
+        'year founded': 'founded_year',
         'discount percentage': 'discount_percentage',
         'discount percent': 'discount_percentage',
         'discount': 'discount_percentage',
@@ -480,6 +565,11 @@ def fallback_query_processing(question, table_name, schema):
         target_column = 'productivity_score'
     elif 'burnout' in question_lower:
         target_column = 'burnout_level'
+    elif 'founded' in question_lower or 'established' in question_lower:
+        target_column = find_matching_column(
+            ['founded_year', 'year_founded', 'established_year', 'foundation_year'],
+            columns
+        )
     elif 'focus' in question_lower:
         target_column = 'focus_index'
     elif 'employment' in question_lower or 'placement' in question_lower:
@@ -659,6 +749,11 @@ def infer_target_sort_column(question_lower, columns):
         'employment rate': 'employment_rate',
         'employment': 'employment_rate',
         'placement rate': 'employment_rate',
+        'founded year': 'founded_year',
+        'founded': 'founded_year',
+        'established year': 'founded_year',
+        'year founded': 'founded_year',
+        'gender': 'gender',
         'exam score': 'exam_score',
         'score': 'exam_score',
         'marks': 'exam_score',
@@ -672,9 +767,19 @@ def infer_target_sort_column(question_lower, columns):
         'rating': 'rating',
         'salary': 'salary',
         'revenue': 'revenue',
+        'na sales': 'na_sales',
+        'north america sales': 'na_sales',
+        'eu sales': 'eu_sales',
+        'europe sales': 'eu_sales',
+        'jp sales': 'jp_sales',
+        'japan sales': 'jp_sales',
+        'other sales': 'other_sales',
         'discount percentage': 'discount_percentage',
         'discount percent': 'discount_percentage',
         'discount': 'discount_percentage',
+        'global sales': 'global_sales',
+        'sales': 'global_sales',
+        'total sales': 'global_sales',
     }
 
     columns_lower = {column.lower(): column for column in columns}
@@ -703,6 +808,10 @@ def infer_target_sort_column(question_lower, columns):
     if best_match:
         return best_match
 
+    default_metric = infer_default_ranking_column(columns)
+    if default_metric and any(term in question_lower for term in ['top', 'bottom', 'highest', 'lowest', 'best', 'worst']):
+        return default_metric
+
     phrase_guess = fuzzy_match_phrase_to_column(question_lower, columns)
     if phrase_guess:
         return phrase_guess
@@ -728,6 +837,123 @@ def infer_top_limit(question_lower):
     if match:
         return int(match.group(1))
     return None
+
+
+def infer_aggregate_function(question_lower):
+    """Infer an aggregate function from the question text."""
+    if any(term in question_lower for term in ['average', 'avg', 'mean']):
+        return 'AVG'
+    if any(term in question_lower for term in ['sum', 'total']):
+        return 'SUM'
+    if any(term in question_lower for term in ['maximum', 'max', 'highest']):
+        return 'MAX'
+    if any(term in question_lower for term in ['minimum', 'min', 'lowest']):
+        return 'MIN'
+    if any(term in question_lower for term in ['count', 'how many', 'number of']):
+        return 'COUNT'
+    return None
+
+
+def infer_contextual_filters(question_lower, columns):
+    """Infer supporting filters such as year constraints from the question."""
+    filters = []
+    year_column = find_matching_column(['year', 'release_year', 'founded_year', 'year_founded'], columns)
+    year_match = re.search(r'\b(?:in|for|from)\s+(?:the\s+year\s+)?(19\d{2}|20\d{2})\b', question_lower)
+    if year_column and year_match:
+        filters.append((year_column, '=', int(year_match.group(1)), 'numeric'))
+    return filters
+
+
+def build_where_clause(filters):
+    """Build a WHERE clause from inferred filters."""
+    if not filters:
+        return ''
+
+    parts = []
+    for column, operator, value, value_type in filters:
+        if value_type == 'text':
+            parts.append(f"LOWER({column}) {operator} LOWER({format_sql_literal(value)})")
+        else:
+            parts.append(f"{column} {operator} {format_sql_literal(value)}")
+    return f"WHERE {' AND '.join(parts)}"
+
+
+def infer_default_ranking_column(columns):
+    """Pick a sensible default metric column for top/bottom questions."""
+    preferred_columns = [
+        'global_sales',
+        'total_sales',
+        'sales',
+        'revenue',
+        'profit',
+        'score',
+        'rating',
+        'gpa',
+        'employment_rate'
+    ]
+    return find_matching_column(preferred_columns, columns)
+
+
+def infer_filter_operator(question_lower):
+    """Infer a comparison operator from the question text."""
+    if any(term in question_lower for term in ['greater than or equal to', 'at least', 'not less than', '>=']):
+        return '>='
+    if any(term in question_lower for term in ['less than or equal to', 'at most', 'not more than', '<=']):
+        return '<='
+    if any(term in question_lower for term in ['greater than', 'more than', 'above', 'higher than', '>']):
+        return '>'
+    if any(term in question_lower for term in ['less than', 'below', 'lower than', '<']):
+        return '<'
+    if any(term in question_lower for term in ['equal to', 'equals', 'exactly', '=']):
+        return '='
+    return None
+
+
+def infer_filter_value(question_lower):
+    """Extract the first numeric value used in a comparison query."""
+    match = re.search(r'-?\d+(?:\.\d+)?', question_lower)
+    if not match:
+        return None
+    value_text = match.group(0)
+    return float(value_text) if '.' in value_text else int(value_text)
+
+
+def infer_text_filter_operator(question_lower):
+    """Infer equality or inequality for simple text filters."""
+    if any(term in question_lower for term in [' is not ', ' are not ', ' not equal to ', ' != ']):
+        return '!='
+    if any(term in question_lower for term in [' is ', ' are ', ' equals ', ' equal to ', '=']):
+        return '='
+    return None
+
+
+def infer_text_filter_value(question_lower):
+    """Extract simple text equality filters such as 'gender is female'."""
+    match = re.search(
+        r'\b(?:is not|are not|not equal to|is|are|equals?|equal to|!=|=)\s+([a-z][a-z0-9_\-\s]*)',
+        question_lower
+    )
+    if not match:
+        return None
+
+    value = match.group(1).strip()
+    value = re.split(
+        r'\b(?:order by|sorted by|limit|top|bottom|highest|lowest|greater|less|above|below)\b',
+        value,
+        maxsplit=1
+    )[0].strip()
+
+    if not value:
+        return None
+
+    return value
+
+
+def format_sql_literal(value):
+    """Format a Python value as a SQL literal."""
+    if isinstance(value, str):
+        return "'" + value.replace("'", "''") + "'"
+    return str(value)
 
 
 def should_apply_default_limit(question_lower):

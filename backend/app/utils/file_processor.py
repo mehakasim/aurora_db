@@ -9,8 +9,9 @@ import pandas as pd
 from werkzeug.utils import secure_filename
 
 from ..models.user import UploadedFile, db
+from .paths import get_sqlite_db_path, get_upload_folder
 
-UPLOAD_FOLDER = 'uploads'
+UPLOAD_FOLDER = get_upload_folder()
 
 
 def process_uploaded_file(file, user_id):
@@ -110,7 +111,7 @@ def clean_column_name(col):
 
 def convert_to_sqlite(df, table_name):
     """Convert pandas DataFrame to SQLite table."""
-    conn = sqlite3.connect('auroradb.db')
+    conn = sqlite3.connect(get_sqlite_db_path())
 
     try:
         df.to_sql(table_name, conn, if_exists='replace', index=False)

@@ -5,9 +5,10 @@ Creates and configures the AuroraDB application
 import os
 
 from dotenv import load_dotenv
-from flask import Flask, redirect, url_for
+from flask import Flask, jsonify, redirect, request, url_for
 from flask_login import LoginManager
 from flask_sqlalchemy import SQLAlchemy
+from .utils.paths import ensure_runtime_storage, get_sqlalchemy_database_uri, get_upload_folder
 
 load_dotenv()
 
@@ -17,6 +18,8 @@ login_manager = LoginManager()
 
 def create_app():
     """Create and configure Flask application."""
+    ensure_runtime_storage()
+
     app = Flask(
         __name__,
         template_folder='../../frontend/templates',
@@ -24,9 +27,9 @@ def create_app():
     )
 
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-change-in-production')
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///auroradb.db')
+    app.config['SQLALCHEMY_DATABASE_URI'] = get_sqlalchemy_database_uri()
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', 'uploads')
+    app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', get_upload_folder())
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
     db.init_app(app)
@@ -34,6 +37,16 @@ def create_app():
     login_manager.login_view = 'auth.login'
     login_manager.login_message = 'Please log in to access this page.'
     login_manager.login_message_category = 'info'
+
+    @login_manager.unauthorized_handler
+    def unauthorized():
+        """Return JSON for API requests instead of redirecting to HTML pages."""
+        if request.path.startswith('/api/'):
+            return jsonify({
+                'success': False,
+                'message': 'Your session expired. Please sign in again.'
+            }), 401
+        return redirect(url_for('auth.login'))
 
     from .models.user import QueryHistory, UploadedFile, User
 
@@ -43,6 +56,7 @@ def create_app():
         return User.query.get(int(user_id))
 
     with app.app_context():
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
         db.create_all()
         print("[OK] Database tables created!")
 
