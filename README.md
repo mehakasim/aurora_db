@@ -1,73 +1,68 @@
-# 🌟 AuroraDB - AI-Powered Spreadsheet Analysis
+# AuroraDB - AI-Powered Spreadsheet Analysis
 
-Transform Excel chaos into clear insights with natural language queries!
+Transform Excel files into SQL-backed insights with natural-language queries.
 
-## ✨ Features
+## Features
 
-✅ **Smart Login & Signup** - Secure authentication with your beautiful Stitch designs
-✅ **File Upload** - Drag & drop Excel/CSV files
-✅ **AI Queries** - Ask questions in plain English, get SQL results
-✅ **Auto Visualizations** - Charts generated automatically
-✅ **Query History** - Track all your analyses
+- Smart login and signup
+- Excel and CSV upload
+- Natural-language questions converted into SQL
+- Auto-generated chart responses
+- Query history tracking
 
-## 🚀 Quick Start
+## Quick Start
 
-### 1. Install Dependencies
+### 1. Install dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Setup Ollama (AI)
+### 2. Configure AI for demo hosting
 ```bash
-# Download from: https://ollama.ai/download
-ollama pull llama3.2:3b
+copy .env.example .env
 ```
 
-### 3. Configure
-```bash
-cp .env.example .env
-# Edit .env and add your SECRET_KEY
+Update `.env` with your provider key.
+
+For Groq:
+```env
+USE_CLOUD_API=true
+API_PROVIDER=groq
+GROQ_API_KEY=your-key-here
+GROQ_MODEL=llama-3.1-8b-instant
 ```
 
-### 4. Run!
+Optional local fallback:
+```env
+OLLAMA_MODEL=llama3.2:3b
+```
+
+### 3. Run locally
 ```bash
 python run.py
 ```
 
-Visit: **http://localhost:5000**
+Visit `http://localhost:5000`
 
-## 📖 Full Documentation
+## Deployment
 
-- `INSTALLATION_GUIDE.md` - Step-by-step setup
-- `COMPLETE_CODE_REFERENCE.md` - All code explained
+This branch is set up for free-host friendly demos:
 
-## 🎯 Tech Stack
+- `Procfile` starts the app with `gunicorn`
+- `backend/app/utils/ai_processor.py` supports Groq, OpenAI, or OpenRouter through OpenAI-compatible HTTP APIs
+- Ollama remains available as an optional local fallback
 
-- **Backend:** Flask, SQLAlchemy, SQLite
-- **Frontend:** HTML, TailwindCSS, JavaScript
-- **AI:** Ollama + Llama 3.2
-- **Data:** Pandas, NumPy, Plotly
+Suggested demo hosts:
 
-## 📁 Project Structure
+- Hugging Face Spaces
+- Render
+- Koyeb
 
+## Testing the AI path
+
+Run:
+```bash
+python test_ai_provider.py
 ```
-AuroraDB/
-├── backend/          # Flask application
-├── frontend/         # Your Stitch designs (functional!)
-├── uploads/          # User files
-└── run.py           # START HERE
-```
 
-## 🆘 Need Help?
-
-1. Check `INSTALLATION_GUIDE.md`
-2. Read `COMPLETE_CODE_REFERENCE.md`
-3. Make sure Ollama is running
-
-## 📝 License
-
-MIT License - Feel free to use for your FYP!
-
----
-
-**Built with ❤️ for your Final Year Project**
+This sends a sample prompt through the configured provider and prints the SQL it returns.
