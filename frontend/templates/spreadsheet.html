@@ -4,6 +4,7 @@
 {% block extra_head %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
     tailwind.config = {
         theme: {
@@ -89,6 +90,21 @@
         0%, 100% { height: 8px; }
         50% { height: 16px; }
     }
+    
+    /* Response Type Selector */
+    .response-type-btn {
+        background: white;
+        color: #6b7280;
+        border: 2px solid transparent;
+    }
+    .response-type-btn:hover {
+        background: #f3f4f6;
+    }
+    .response-type-btn.active {
+        background: #0D9488;
+        color: white;
+        border-color: #0D9488;
+    }
 </style>
 {% endblock %}
 
@@ -136,14 +152,9 @@
         <button onclick="window.location.reload()" class="p-1 hover:bg-gray-100 rounded">
             <span class="material-icons-outlined text-lg">refresh</span>
         </button>
-        <sspan class="border-l pl-2" id="rowCount">
-    {% set displayed = preview_data.rows|length %}
-    {% if preview_data.total_rows <= displayed %}
-        Showing all {{ preview_data.total_rows }} rows
-    {% else %}
-        Showing <span id="currentRows">{{ displayed }}</span> of {{ preview_data.total_rows }} rows
-    {% endif %}
-</span>
+        <span class="border-l pl-2" id="rowCount">
+            Showing <span id="currentRows">{{ [preview_data.displayed_rows, 100]|min }}</span> of {{ preview_data.total_rows }} rows
+        </span>
         <span id="queryIndicator" class="hidden ml-2 px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium">
             Query Results
         </span>
@@ -186,6 +197,21 @@
 
             <!-- Chat Input with Voice -->
             <div class="p-4 border-t">
+                <!-- Response Type Selector -->
+                <div class="mb-3 flex items-center justify-center gap-2 bg-gray-100 p-2 rounded-lg">
+                    <span class="text-xs font-medium text-gray-600">Response as:</span>
+                    <button id="textResponseBtn" onclick="setResponseType('text')" 
+                            class="response-type-btn active flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all">
+                        <span class="material-icons-outlined text-base">chat</span>
+                        <span class="text-xs font-medium">Text</span>
+                    </button>
+                    <button id="chartResponseBtn" onclick="setResponseType('chart')" 
+                            class="response-type-btn flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all">
+                        <span class="material-icons-outlined text-base">bar_chart</span>
+                        <span class="text-xs font-medium">Chart</span>
+                    </button>
+                </div>
+                
                 <div class="bg-gray-50 rounded-xl p-3 border focus-within:border-primary transition-colors">
                     <input type="text" id="queryInput" placeholder="Ask about your data or click mic to speak..."
                            class="w-full bg-transparent outline-none text-sm"
@@ -249,21 +275,17 @@
             <!-- Pagination Controls -->
             <div id="pagination" class="border-t p-3 bg-gray-50 flex items-center justify-between">
                 <p class="text-sm text-gray-600">
-    {% set displayed = preview_data.rows|length %}
-    <span id="paginationText">
-        {% if preview_data.total_rows <= displayed %}
-            Showing all {{ preview_data.total_rows }} rows
-        {% else %}
-            Showing first {{ displayed }} of {{ preview_data.total_rows }} rows
-        {% endif %}
-    </span>
-</p>
-
+                    <span id="paginationText">Showing first 100 of {{ preview_data.total_rows }} rows</span>
+                </p>
                 {% if preview_data.total_rows > 100 %}
                 <div class="flex gap-2">
                     <button id="loadMoreBtn" onclick="loadMoreRows()" 
                             class="px-4 py-2 bg-primary text-white rounded text-sm font-semibold hover:opacity-90">
                         Load Next 100 Rows
+                    </button>
+                    <button onclick="loadAllRows()" 
+                            class="px-4 py-2 bg-gray-200 text-gray-700 rounded text-sm font-semibold hover:bg-gray-300">
+                        Load All ({{ preview_data.total_rows }} rows)
                     </button>
                 </div>
                 {% endif %}
@@ -297,6 +319,7 @@ let originalColumns = {{ preview_data.columns|tojson }};
 let originalRows = {{ preview_data.rows[:100]|tojson }};
 let currentLoadedRows = 100;
 let isQueryResult = false;
+let responseType = 'text'; // 'text' or 'chart'
 
 // Voice Recognition Setup
 let recognition = null;
@@ -424,6 +447,22 @@ function setQuestion(q) {
     document.getElementById('queryInput').value = q;
 }
 
+function setResponseType(type) {
+    responseType = type;
+    
+    // Update button states
+    const textBtn = document.getElementById('textResponseBtn');
+    const chartBtn = document.getElementById('chartResponseBtn');
+    
+    if (type === 'text') {
+        textBtn.classList.add('active');
+        chartBtn.classList.remove('active');
+    } else {
+        textBtn.classList.remove('active');
+        chartBtn.classList.add('active');
+    }
+}
+
 function askQuestion() {
     // Stop recording if active
     if (isRecording) {
@@ -453,7 +492,11 @@ function askQuestion() {
     fetch('/api/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_id: fileId, question: question })
+        body: JSON.stringify({ 
+            file_id: fileId, 
+            question: question,
+            response_type: responseType 
+        })
     })
     .then(r => r.json())
     .then(data => {
@@ -463,17 +506,121 @@ function askQuestion() {
         if (!data.success) throw new Error(data.message || 'Query failed');
         
         const aiMsg = document.createElement('div');
-        aiMsg.className = 'mb-3 p-3 bg-green-50 rounded-lg';
-        aiMsg.innerHTML = `<p class="text-xs font-medium text-green-900">AI</p><p class="text-sm text-green-800">${data.answer}</p>`;
-        chatMessages.appendChild(aiMsg);
+        aiMsg.className = 'mb-3 rounded-lg overflow-hidden';
+        
+        // Create enhanced response based on type
+        let responseHTML = '';
         
         if (data.result_type === 'table') {
+            // Enhanced table response with stats
+            responseHTML = `
+                <div class="bg-gradient-to-r from-teal-500 to-teal-600 p-3">
+                    <div class="flex items-center gap-2 text-white">
+                        <span class="material-icons-outlined text-lg">check_circle</span>
+                        <span class="text-xs font-bold uppercase tracking-wide">Query Successful</span>
+                    </div>
+                </div>
+                <div class="bg-white p-4 border-x border-b border-teal-200">
+                    <p class="text-sm text-gray-800 mb-3">${data.answer}</p>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-teal-50 p-3 rounded-lg">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="material-icons-outlined text-teal-600 text-sm">table_rows</span>
+                                <span class="text-xs text-teal-700 font-medium">Rows</span>
+                            </div>
+                            <p class="text-2xl font-bold text-teal-900">${data.data.row_count}</p>
+                        </div>
+                        <div class="bg-teal-50 p-3 rounded-lg">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="material-icons-outlined text-teal-600 text-sm">view_column</span>
+                                <span class="text-xs text-teal-700 font-medium">Columns</span>
+                            </div>
+                            <p class="text-2xl font-bold text-teal-900">${data.data.columns.length}</p>
+                        </div>
+                    </div>
+                    <div class="mt-3 flex items-center gap-2 text-xs text-gray-500">
+                        <span class="material-icons-outlined text-sm">info</span>
+                        <span>Data displayed in spreadsheet below</span>
+                    </div>
+                </div>
+            `;
+        } else if (data.result_type === 'value') {
+            // Enhanced single value response
+            const valueIcon = getValueIcon(data.answer);
+            responseHTML = `
+                <div class="bg-gradient-to-r from-purple-500 to-purple-600 p-3">
+                    <div class="flex items-center gap-2 text-white">
+                        <span class="material-icons-outlined text-lg">${valueIcon}</span>
+                        <span class="text-xs font-bold uppercase tracking-wide">Answer</span>
+                    </div>
+                </div>
+                <div class="bg-white p-4 border-x border-b border-purple-200">
+                    <p class="text-sm text-gray-800 leading-relaxed">${data.answer}</p>
+                    ${data.sql_query ? `
+                        <div class="mt-3 pt-3 border-t border-gray-200">
+                            <details class="text-xs">
+                                <summary class="cursor-pointer text-gray-500 hover:text-gray-700 font-medium">View SQL Query</summary>
+                                <pre class="mt-2 p-2 bg-gray-50 rounded text-xs overflow-x-auto">${escapeHtml(data.sql_query)}</pre>
+                            </details>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        } else {
+            // Fallback simple response
+            responseHTML = `
+                <div class="p-3 bg-green-50 rounded-lg">
+                    <p class="text-xs font-medium text-green-900">AI</p>
+                    <p class="text-sm text-green-800">${data.answer}</p>
+                </div>
+            `;
+        }
+        
+        aiMsg.innerHTML = responseHTML;
+        chatMessages.appendChild(aiMsg);
+        
+        // Handle chart visualization
+        if (data.result_type === 'chart' && data.chart) {
+            const chartContainer = document.createElement('div');
+            chartContainer.className = 'mt-3 bg-white p-4 rounded-lg border border-green-200';
+            chartContainer.innerHTML = `
+                <div style="height: 300px; position: relative;">
+                    <canvas id="queryChart${Date.now()}"></canvas>
+                </div>
+            `;
+            aiMsg.appendChild(chartContainer);
+            
+            // Render chart
+            setTimeout(() => {
+                const canvas = chartContainer.querySelector('canvas');
+                new Chart(canvas, {
+                    type: data.chart.type,
+                    data: data.chart.data,
+                    options: data.chart.options
+                });
+            }, 100);
+            
+            // Also update spreadsheet with data
+            if (data.data && data.data.rows) {
+                updateSpreadsheet(data.data.columns, data.data.rows);
+                const queryIndicator = document.getElementById('queryIndicator');
+                const dataInfo = document.getElementById('dataInfo');
+                if (queryIndicator) queryIndicator.classList.remove('hidden');
+                if (dataInfo) dataInfo.textContent = `${data.data.row_count} results × ${data.data.columns.length} columns`;
+                isQueryResult = true;
+            }
+        }
+        // Handle table data
+        else if (data.result_type === 'table') {
             updateSpreadsheet(data.data.columns, data.data.rows);
-            document.getElementById('queryIndicator').classList.remove('hidden');
-            document.getElementById('dataInfo').textContent = `${data.data.row_count} results × ${data.data.columns.length} columns`;
+            const queryIndicator = document.getElementById('queryIndicator');
+            const dataInfo = document.getElementById('dataInfo');
+            if (queryIndicator) queryIndicator.classList.remove('hidden');
+            if (dataInfo) dataInfo.textContent = `${data.data.row_count} results × ${data.data.columns.length} columns`;
             isQueryResult = true;
         } else {
-            document.getElementById('queryIndicator').classList.add('hidden');
+            const queryIndicator = document.getElementById('queryIndicator');
+            if (queryIndicator) queryIndicator.classList.add('hidden');
         }
         
         document.getElementById('queryInput').value = '';
@@ -592,9 +739,6 @@ function updateSpreadsheet(columns, rows) {
 function resetView() {
     const table = document.getElementById('dataTable');
     const thead = table.querySelector('thead tr');
-    const totalRows = {{ preview_data.total_rows }};
-const initialRows = {{ preview_data.rows|length }};
-let currentLoadedRows = initialRows;
     
     thead.innerHTML = '<th class="row-num">#</th>';
     originalColumns.forEach(col => {
@@ -612,14 +756,11 @@ let currentLoadedRows = initialRows;
         tableBody.appendChild(tr);
     });
     
-    currentLoadedRows = initialRows;
+    currentLoadedRows = 100;
     document.getElementById('queryIndicator').classList.add('hidden');
     document.getElementById('dataInfo').textContent = `{{ file.row_count }} rows × {{ preview_data.columns|length }} columns`;
-    document.getElementById('paginationText').textContent = 
-        totalRows <= initialRows
-            ? `Showing all ${totalRows} rows`
-            : `Showing first ${initialRows} of ${totalRows} rows`;
-    document.getElementById('currentRows').textContent = initialRows;
+    document.getElementById('paginationText').textContent = 'Showing first 100 of {{ preview_data.total_rows }} rows';
+    document.getElementById('currentRows').textContent = '100';
     isQueryResult = false;
 }
 
@@ -631,6 +772,16 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function getValueIcon(answer) {
+    const lower = answer.toLowerCase();
+    if (lower.includes('found') || lower.includes('there are')) return 'calculate';
+    if (lower.includes('average') || lower.includes('mean')) return 'functions';
+    if (lower.includes('total') || lower.includes('sum')) return 'add';
+    if (lower.includes('maximum') || lower.includes('highest')) return 'trending_up';
+    if (lower.includes('minimum') || lower.includes('lowest')) return 'trending_down';
+    return 'lightbulb';
 }
 </script>
 {% endblock %}
