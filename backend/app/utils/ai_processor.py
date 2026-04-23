@@ -18,7 +18,6 @@ from ..utils.db_utils import execute_query
 def process_natural_language_query(question, table_name, schema):
     """
     Convert natural language question to SQL and execute
-    ENHANCED: Returns detailed, multi-sentence responses
     """
     
     question_lower = question.lower()

@@ -1,6 +1,6 @@
 """
 Smart Chart Generator - Dataset-Specific Visualizations
-Analyzes your data and creates relevant charts automatically
+Analyzes data and creates relevant charts automatically
 """
 import pandas as pd
 import numpy as np
@@ -11,7 +11,7 @@ import json
 def generate_visualizations_for_file(file_record):
     """
     Analyze dataset and generate specific, relevant visualizations
-    NO GENERIC CHARTS - Only what makes sense for YOUR data
+    NO GENERIC CHARTS - Only what makes sense for the data
     """
     table_name = file_record.table_name
     data = get_table_preview(table_name, limit=1000)
