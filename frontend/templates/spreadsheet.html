@@ -498,11 +498,26 @@ function askQuestion() {
             response_type: responseType 
         })
     })
-    .then(r => r.json())
+    .then(async (response) => {
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+            if (response.status === 401) {
+                throw new Error('Your session expired. Please sign in again.');
+            }
+            const text = await response.text();
+            throw new Error(text.startsWith('<!DOCTYPE') ? 'Server returned an HTML page instead of JSON.' : text);
+        }
+
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.message || 'Query failed');
+        }
+        return data;
+    })
     .then(data => {
         document.getElementById('loadingOverlay').classList.add('hidden');
         document.getElementById('statusText').textContent = 'Ready';
-        
+
         if (!data.success) throw new Error(data.message || 'Query failed');
         
         const aiMsg = document.createElement('div');

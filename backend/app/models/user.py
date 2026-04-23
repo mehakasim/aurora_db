@@ -1,6 +1,5 @@
 """
 Database Models - User, UploadedFile, QueryHistory
-FIXED: Uses existing db instance from __init__.py
 """
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash

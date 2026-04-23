@@ -4,11 +4,17 @@ Database Utilities - Functions for working with SQLite
 import sqlite3
 
 import pandas as pd
+from .paths import get_sqlite_db_path
+
+
+def get_connection():
+    """Open a connection to the current runtime SQLite database."""
+    return sqlite3.connect(get_sqlite_db_path())
 
 
 def get_table_preview(table_name, limit=100, offset=0):
     """Get preview of data from table."""
-    conn = sqlite3.connect('auroradb.db')
+    conn = get_connection()
 
     try:
         query = f"SELECT * FROM {table_name} LIMIT {limit} OFFSET {offset}"
@@ -30,7 +36,7 @@ def get_table_preview(table_name, limit=100, offset=0):
 
 def get_table_schema(table_name):
     """Get column names and types from SQLite table."""
-    conn = sqlite3.connect('auroradb.db')
+    conn = get_connection()
     cursor = conn.cursor()
 
     try:
@@ -46,7 +52,7 @@ def get_table_schema(table_name):
 
 def execute_query(sql_query, table_name=None):
     """Execute SQL query and return results."""
-    conn = sqlite3.connect('auroradb.db')
+    conn = get_connection()
 
     try:
         df = pd.read_sql_query(sql_query, conn)
@@ -63,7 +69,7 @@ def execute_query(sql_query, table_name=None):
 
 def drop_table(table_name):
     """Delete a table from database."""
-    conn = sqlite3.connect('auroradb.db')
+    conn = get_connection()
     cursor = conn.cursor()
 
     try:
