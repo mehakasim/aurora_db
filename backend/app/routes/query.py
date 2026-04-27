@@ -287,13 +287,16 @@ def handle_query():
                     'sql_query': result.get('sql_query')
                 })
         else:
-            return jsonify({
+            payload = {
                 'success': True,
                 'result_type': 'value',
                 'answer': result['answer'],
                 'value': result.get('value'),
                 'sql_query': result.get('sql_query')
-            })
+            }
+            if result.get('data') is not None:
+                payload['data'] = result.get('data')
+            return jsonify(payload)
 
     except Exception as e:
         import traceback

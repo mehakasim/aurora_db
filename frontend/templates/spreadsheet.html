@@ -633,6 +633,13 @@ function askQuestion() {
             if (queryIndicator) queryIndicator.classList.remove('hidden');
             if (dataInfo) dataInfo.textContent = `${data.data.row_count} results × ${data.data.columns.length} columns`;
             isQueryResult = true;
+        } else if (data.result_type === 'value' && data.data && data.data.rows) {
+            updateSpreadsheet(data.data.columns, data.data.rows);
+            const queryIndicator = document.getElementById('queryIndicator');
+            const dataInfo = document.getElementById('dataInfo');
+            if (queryIndicator) queryIndicator.classList.remove('hidden');
+            if (dataInfo) dataInfo.textContent = `${data.value} matches × ${data.data.columns.length} columns`;
+            isQueryResult = true;
         } else {
             const queryIndicator = document.getElementById('queryIndicator');
             if (queryIndicator) queryIndicator.classList.add('hidden');

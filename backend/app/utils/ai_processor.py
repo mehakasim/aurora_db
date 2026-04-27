@@ -66,13 +66,18 @@ def process_natural_language_query(question, table_name, schema):
         if is_single_value_query(sql_query):
             value = result['rows'][0][0] if result['rows'] else 0
             answer = format_detailed_value_answer(question, value, result['columns'][0] if result['columns'] else 'count', schema)
-
-            return {
+            response_payload = {
                 'result_type': 'value',
                 'answer': answer,
                 'value': value,
                 'sql_query': sql_query
             }
+
+            detail_result = get_detail_result_for_value_query(sql_query, question, table_name)
+            if detail_result:
+                response_payload['data'] = detail_result
+
+            return response_payload
         else:
             if len(result['rows']) == 0:
                 return create_helpful_no_results_response(question, schema, sql_query)
@@ -132,6 +137,7 @@ def try_build_direct_sql_query(question, table_name, schema, is_show_query, is_c
     contextual_filters = infer_contextual_filters(question_lower, columns)
     top_limit = infer_top_limit(question_lower)
     sort_direction = infer_sort_direction(question_lower)
+    ranking_aggregate = aggregate_function in ('MAX', 'MIN') and sort_direction is not None
 
     if top_limit and sort_direction:
         filter_columns = {column for column, _, _, _ in contextual_filters}
@@ -140,14 +146,31 @@ def try_build_direct_sql_query(question, table_name, schema, is_show_query, is_c
             if fallback_metric:
                 target_column = fallback_metric
 
+    if is_show_query and target_column and sort_direction and (top_limit or contextual_filters or ranking_aggregate):
+        where_clause = build_where_clause(contextual_filters)
+        limit_clause = f" LIMIT {top_limit}" if top_limit else ""
+        return (
+            f"SELECT * FROM {table_name} "
+            f"{where_clause} "
+            f"ORDER BY {target_column} {sort_direction}{limit_clause};"
+        )
+
     if not target_column:
         return None
 
     if aggregate_function:
-        where_clause = build_where_clause(contextual_filters)
+        aggregate_filters = list(contextual_filters)
+
+        if filter_operator and filter_value is not None:
+            aggregate_filters.append((target_column, filter_operator, filter_value, 'numeric'))
+        elif text_filter_operator and text_filter_value is not None:
+            aggregate_filters.append((target_column, text_filter_operator, text_filter_value, 'text'))
+
+        where_clause = build_where_clause(aggregate_filters)
         alias = aggregate_function.lower()
+        aggregate_target = '*' if aggregate_function == 'COUNT' else target_column
         return (
-            f"SELECT {aggregate_function}({target_column}) AS {alias} FROM {table_name} "
+            f"SELECT {aggregate_function}({aggregate_target}) AS {alias} FROM {table_name} "
             f"{where_clause};"
         )
 
@@ -329,19 +352,7 @@ def format_detailed_value_answer(question, value, column_name, schema):
     
     # Main answer with context
     if 'count' in question_lower or 'how many' in question_lower:
-        responses.append(f"Based on your query, I found {value} records that match your criteria.")
-        
-        if value == 0:
-            responses.append("This means there are no records in the dataset that meet the specified conditions.")
-            responses.append("You might want to try relaxing your filter criteria or checking if the data exists.")
-        elif value == 1:
-            responses.append("There is exactly one record that matches what you're looking for.")
-        elif value < 10:
-            responses.append(f"This is a relatively small subset of your data, representing just {value} records.")
-        elif value < 100:
-            responses.append(f"This represents a moderate number of records from your dataset.")
-        else:
-            responses.append(f"This is a substantial number of records. The data has been filtered to show you exactly what you requested.")
+        return format_count_answer(question, value)
     
     elif 'average' in question_lower or 'mean' in question_lower or 'avg' in question_lower:
         responses.append(f"The average value for {column_name.replace('_', ' ')} is {value}.")
@@ -376,10 +387,32 @@ def format_detailed_value_answer(question, value, column_name, schema):
         responses.append(f"The result of your query is {value}.")
         responses.append("This value has been calculated based on the specific criteria you provided.")
     
-    # Add helpful closing
-    responses.append("Feel free to ask follow-up questions or request different analyses of your data!")
-    
     return " ".join(responses)
+
+
+def format_count_answer(question, value):
+    """Turn count questions into a direct natural-language answer."""
+    question_lower = question.lower().strip().rstrip('?.!')
+
+    public_universities_match = re.search(
+        r'(?:count|number of|how many)\s+universit(?:y|ies)\b.*?\binstitution type\s+is\s+([a-z\s-]+)',
+        question_lower
+    )
+    if public_universities_match:
+        institution_type = public_universities_match.group(1).strip()
+        return f"The count of universities that are {institution_type} is {value}."
+
+    count_of_match = re.search(r'(?:count|number of)\s+(.+)', question_lower)
+    if count_of_match:
+        subject = re.sub(r'^of\s+', '', count_of_match.group(1).strip())
+        return f"The count of {subject} is {value}."
+
+    how_many_match = re.search(r'how many\s+(.+)', question_lower)
+    if how_many_match:
+        subject = how_many_match.group(1).strip()
+        return f"The number of {subject} is {value}."
+
+    return f"The count is {value}."
 
 
 def format_detailed_table_answer(question, row_count, columns, rows, schema):
@@ -701,6 +734,45 @@ def clean_sql_query(sql):
     return sql
 
 
+def get_detail_result_for_value_query(sql_query, question, table_name):
+    """Return matching rows for count queries so the spreadsheet can still update."""
+    question_lower = question.lower()
+    sql_upper = sql_query.upper()
+
+    if 'COUNT(' not in sql_upper:
+        return None
+
+    if not any(term in question_lower for term in ['count', 'how many', 'number of']):
+        return None
+
+    detail_sql = build_detail_query_from_count_sql(sql_query, table_name)
+    if not detail_sql:
+        return None
+
+    try:
+        return execute_query(detail_sql, table_name)
+    except Exception:
+        return None
+
+
+def build_detail_query_from_count_sql(sql_query, table_name):
+    """Convert a COUNT query into a bounded SELECT * query that preserves filters."""
+    normalized_sql = sql_query.strip().rstrip(';')
+    pattern = re.compile(
+        rf'^\s*SELECT\s+COUNT\s*\(\s*(?:\*|[^)]+)\s*\)\s+AS\s+\w+\s+FROM\s+{re.escape(table_name)}\b',
+        re.IGNORECASE
+    )
+    detail_sql = pattern.sub(f"SELECT * FROM {table_name}", normalized_sql, count=1)
+
+    if detail_sql == normalized_sql:
+        return None
+
+    if 'LIMIT' not in detail_sql.upper():
+        detail_sql = f"{detail_sql} LIMIT 1000"
+
+    return f"{detail_sql};"
+
+
 def normalize_sql_for_question(sql, question, schema):
     """Make sort-sensitive queries deterministic when the model omits ordering."""
     sql_upper = sql.upper()
@@ -857,9 +929,75 @@ def infer_contextual_filters(question_lower, columns):
     """Infer supporting filters such as year constraints from the question."""
     filters = []
     year_column = find_matching_column(['year', 'release_year', 'founded_year', 'year_founded'], columns)
-    year_match = re.search(r'\b(?:in|for|from)\s+(?:the\s+year\s+)?(19\d{2}|20\d{2})\b', question_lower)
-    if year_column and year_match:
-        filters.append((year_column, '=', int(year_match.group(1)), 'numeric'))
+    year_regex = r'((?:1[0-9]{3}|20[0-9]{2}))'
+
+    founded_year_column = find_matching_column(
+        ['founded_year', 'year_founded', 'established_year', 'foundation_year'],
+        columns
+    )
+    if founded_year_column:
+        founded_matchers = [
+            (rf'\b(?:founded|established)\s+before\s+{year_regex}\b', '<'),
+            (rf'\b(?:founded|established)\s+after\s+{year_regex}\b', '>'),
+            (rf'\b(?:founded|established)\s+(?:in|during|for|from)\s+{year_regex}\b', '='),
+            (rf'\b(?:before)\s+{year_regex}\b', '<'),
+            (rf'\b(?:after)\s+{year_regex}\b', '>'),
+        ]
+        for pattern, operator in founded_matchers:
+            match = re.search(pattern, question_lower)
+            if match:
+                filters.append((founded_year_column, operator, int(match.group(1)), 'numeric'))
+                break
+
+    if year_column:
+        year_patterns = [
+            (rf'\b(?:in|for|from)\s+(?:the\s+year\s+)?{year_regex}\b', '='),
+            (rf'\b(?:before|earlier than|prior to)\s+{year_regex}\b', '<'),
+            (rf'\b(?:after|later than|since)\s+{year_regex}\b', '>'),
+        ]
+        filtered_columns = {column for column, _, _, _ in filters}
+        if year_column not in filtered_columns:
+            for pattern, operator in year_patterns:
+                year_match = re.search(pattern, question_lower)
+                if year_match:
+                    filters.append((year_column, operator, int(year_match.group(1)), 'numeric'))
+                    break
+
+    text_context_mappings = [
+        (
+            find_matching_column(['academic_level', 'education_level', 'student_level'], columns),
+            {
+                'high school': 'High School',
+                'college': 'College',
+                'undergraduate': 'Undergraduate',
+                'graduate': 'Graduate',
+            }
+        ),
+        (
+            find_matching_column(['institution_type', 'type', 'school_type'], columns),
+            {
+                'public': 'Public',
+                'private': 'Private',
+            }
+        ),
+    ]
+
+    for column_name, value_mappings in text_context_mappings:
+        if not column_name:
+            continue
+        if any(existing_column == column_name for existing_column, _, _, _ in filters):
+            continue
+
+        for phrase, value in value_mappings.items():
+            patterns = [
+                rf'\bin\s+{re.escape(phrase)}\b',
+                rf'\bwhere\s+{re.escape(column_name.lower().replace("_", " "))}\s+is\s+{re.escape(phrase)}\b',
+                rf'\bwith\s+{re.escape(phrase)}\b',
+            ]
+            if any(re.search(pattern, question_lower) for pattern in patterns):
+                filters.append((column_name, '=', value, 'text'))
+                break
+
     return filters
 
 
